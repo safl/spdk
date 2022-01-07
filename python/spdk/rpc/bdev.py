@@ -465,11 +465,12 @@ def bdev_nvme_set_options(client, action_on_timeout=None, timeout_us=None, timeo
                           nvme_adminq_poll_period_us=None, nvme_ioq_poll_period_us=None, io_queue_requests=None,
                           delay_cmd_submit=None, transport_retry_count=None, bdev_retry_count=None,
                           transport_ack_timeout=None, ctrlr_loss_timeout_sec=None, reconnect_delay_sec=None,
-                          fast_io_fail_timeout_sec=None):
+                          fast_io_fail_timeout_sec=None,
+                          ss_reset_action_timeout_us=None):
     """Set options for the bdev nvme. This is startup command.
 
     Args:
-        action_on_timeout:  action to take on command time out. Valid values are: none, reset, abort (optional)
+        action_on_timeout:  action to take on command time out. Valid values are: none, reset, abort, subsystem_reset (optional)
         timeout_us: Timeout for each command, in microseconds. If 0, don't track timeouts (optional)
         timeout_admin_us: Timeout for each admin command, in microseconds. If 0, treat same as io timeouts (optional)
         keep_alive_timeout_ms: Keep alive timeout period in millisecond, default is 10s (optional)
@@ -501,7 +502,8 @@ def bdev_nvme_set_options(client, action_on_timeout=None, timeout_us=None, timeo
         If fast_io_fail_timeout_sec is not zero, it has to be not less than reconnect_delay_sec and less than
         ctrlr_loss_timeout_sec if ctrlr_loss_timeout_sec is not -1.
         This can be overridden by bdev_nvme_attach_controller. (optional)
-
+        ss_reset_action_timeout_us: Wait time before a SPDK notify event is generated
+                                           indicating a failed subsystem reset action (optional)
     """
     params = {}
 
@@ -562,6 +564,9 @@ def bdev_nvme_set_options(client, action_on_timeout=None, timeout_us=None, timeo
 
     if fast_io_fail_timeout_sec is not None:
         params['fast_io_fail_timeout_sec'] = fast_io_fail_timeout_sec
+
+    if ss_reset_action_timeout_us is not None:
+        params['ss_reset_action_timeout_us'] = ss_reset_action_timeout_us
 
     return client.call('bdev_nvme_set_options', params)
 

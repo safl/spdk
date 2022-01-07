@@ -49,7 +49,7 @@
 #include "spdk/thread.h"
 #include "spdk/string.h"
 #include "spdk/util.h"
-
+#include "spdk/notify.h"
 #include "spdk/bdev_module.h"
 #include "spdk/log.h"
 
@@ -142,6 +142,7 @@ static struct spdk_bdev_nvme_opts g_opts = {
 	.ctrlr_loss_timeout_sec = 0,
 	.reconnect_delay_sec = 0,
 	.fast_io_fail_timeout_sec = 0,
+	.ss_reset_action_timeout_us  = 1000 * 1000 * 30ULL,
 };
 
 #define NVME_HOTPLUG_POLL_PERIOD_MAX			10000000ULL
@@ -420,6 +421,8 @@ _nvme_ctrlr_delete(struct nvme_ctrlr *nvme_ctrlr)
 {
 	struct nvme_path_id *path_id, *tmp_path;
 	struct nvme_ns *ns, *tmp_ns;
+
+	spdk_poller_unregister(&nvme_ctrlr->ss_reset_timer);
 
 	free(nvme_ctrlr->copied_ana_desc);
 	spdk_free(nvme_ctrlr->ana_log_page);
@@ -2855,6 +2858,48 @@ nvme_abort_cpl(void *ctx, const struct spdk_nvme_cpl *cpl)
 	}
 }
 
+static int
+bdev_nvme_ss_reset_timer(void *arg)
+{
+	struct nvme_ctrlr *nvme_ctrlr = arg;
+
+	SPDK_WARNLOG("subsystem reset timed out for nvme_ctrlr=%p, traddr=%s, name=%s\n",
+		     nvme_ctrlr, spdk_nvme_ctrlr_get_transport_id(nvme_ctrlr->ctrlr)->traddr,
+		     nvme_ctrlr->nbdev_ctrlr->name);
+
+	spdk_notify_send("bdev_subsystem_reset_action_timeout", nvme_ctrlr->nbdev_ctrlr->name);
+
+	spdk_poller_unregister(&nvme_ctrlr->ss_reset_timer);
+	return 0;
+}
+
+static void
+bdev_nvme_ss_reset(void *ctx)
+{
+	struct nvme_ctrlr *nvme_ctrlr = ctx;
+	int rc;
+
+	if (nvme_ctrlr->ss_reset_timer) {
+		SPDK_NOTICELOG("Subsystem reset already in progress for %s -- skipping reset\n",
+			       spdk_nvme_ctrlr_get_transport_id(nvme_ctrlr->ctrlr)->traddr);
+		return;
+	}
+
+	rc = spdk_nvme_ctrlr_reset_subsystem(nvme_ctrlr->ctrlr);
+	if (rc == 0) {
+		nvme_ctrlr->ss_reset_timer = SPDK_POLLER_REGISTER(bdev_nvme_ss_reset_timer, nvme_ctrlr,
+					     g_opts.ss_reset_action_timeout_us);
+	} else {
+		SPDK_WARNLOG("Subsystem reset failed with rc=%d\n", rc);
+	}
+}
+
+static void
+bdev_nvme_start_ss_reset(struct nvme_ctrlr *nvme_ctrlr)
+{
+	spdk_thread_send_msg(nvme_ctrlr->thread, bdev_nvme_ss_reset, nvme_ctrlr);
+}
+
 static void
 timeout_cb(void *cb_arg, struct spdk_nvme_ctrlr *ctrlr,
 	   struct spdk_nvme_qpair *qpair, uint16_t cid)
@@ -2903,8 +2948,11 @@ timeout_cb(void *cb_arg, struct spdk_nvme_ctrlr *ctrlr,
 		}
 
 	/* FALLTHROUGH */
-	case SPDK_BDEV_NVME_TIMEOUT_ACTION_RESET:
+	case SPDK_BDEV_NVME_TIMEOUT_ACTION_CONTROLLER_RESET:
 		bdev_nvme_reset(nvme_ctrlr);
+		break;
+	case SPDK_BDEV_NVME_TIMEOUT_ACTION_SUBSYSTEM_RESET:
+		bdev_nvme_start_ss_reset(nvme_ctrlr);
 		break;
 	case SPDK_BDEV_NVME_TIMEOUT_ACTION_NONE:
 		SPDK_DEBUGLOG(bdev_nvme, "No action for nvme controller timeout.\n");
@@ -3365,7 +3413,7 @@ aer_cb(void *arg, const struct spdk_nvme_cpl *cpl)
 	union spdk_nvme_async_event_completion	event;
 
 	if (spdk_nvme_cpl_is_error(cpl)) {
-		SPDK_WARNLOG("AER request execute failed");
+		SPDK_WARNLOG("AER request execute failed\n");
 		return;
 	}
 
@@ -5886,10 +5934,12 @@ bdev_nvme_opts_config_json(struct spdk_json_write_ctx *w)
 {
 	const char	*action;
 
-	if (g_opts.action_on_timeout == SPDK_BDEV_NVME_TIMEOUT_ACTION_RESET) {
+	if (g_opts.action_on_timeout == SPDK_BDEV_NVME_TIMEOUT_ACTION_CONTROLLER_RESET) {
 		action = "reset";
 	} else if (g_opts.action_on_timeout == SPDK_BDEV_NVME_TIMEOUT_ACTION_ABORT) {
 		action = "abort";
+	} else if (g_opts.action_on_timeout == SPDK_BDEV_NVME_TIMEOUT_ACTION_SUBSYSTEM_RESET) {
+		action = "subsystem_reset";
 	} else {
 		action = "none";
 	}

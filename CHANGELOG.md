@@ -61,6 +61,8 @@ New parameters, `ctrlr_loss_timeout_sec`, `reconnect_delay_sec`, and `fast_io_fa
 added to the RPC `bdev_nvme_set_options`. They can be overridden if they are given by the RPC
 `bdev_nvme_attach_controller`.
 
+Enhanced `action_on_timeout` to support a subsystem reset when a command times out.
+
 ### event
 
 Added `msg_mempool_size` parameter to `spdk_reactors_init` and `spdk_thread_lib_init_ext`.
@@ -126,6 +128,8 @@ of requested IO queues.
 
 Added `key_file` parameter to the `rbd_register_cluster` RPC.  It is an optional parameter to
 specify a keyring file to connect to a RADOS cluster.
+
+### bdev
 
 Added `spdk_bdev_get_zone_id` API to retrieve zone_id for a certain LBA.
 

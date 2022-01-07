@@ -2963,6 +2963,8 @@ transport_ack_timeout      | Optional | number      | Time to wait ack until pac
 ctrlr_loss_timeout_sec     | Optional | number      | Time to wait until ctrlr is reconnected before deleting ctrlr.  -1 means infinite reconnects. 0 means no reconnect.
 reconnect_delay_sec        | Optional | number      | Time to delay a reconnect trial. 0 means no reconnect.
 fast_io_fail_timeout_sec   | Optional | number      | Time to wait until ctrlr is reconnected before failing I/O to ctrlr. 0 means no such timeout.
+ss_reset_action_timeout_us | Optional | number      | When a subsystem reset action fails to complete, a SPDK notify event is generated
+after the specified timeout (only applicable for action_on_timeout=subsystem_reset).
 
 #### Example
 

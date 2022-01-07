@@ -66,7 +66,9 @@ rpc_decode_action_on_timeout(const struct spdk_json_val *val, void *out)
 	} else if (spdk_json_strequal(val, "abort") == true) {
 		*action = SPDK_BDEV_NVME_TIMEOUT_ACTION_ABORT;
 	} else if (spdk_json_strequal(val, "reset") == true) {
-		*action = SPDK_BDEV_NVME_TIMEOUT_ACTION_RESET;
+		*action = SPDK_BDEV_NVME_TIMEOUT_ACTION_CONTROLLER_RESET;
+	} else if (spdk_json_strequal(val, "subsystem_reset") == true) {
+		*action = SPDK_BDEV_NVME_TIMEOUT_ACTION_SUBSYSTEM_RESET;
 	} else {
 		SPDK_NOTICELOG("Invalid parameter value: action_on_timeout\n");
 		return -EINVAL;
@@ -95,6 +97,7 @@ static const struct spdk_json_object_decoder rpc_bdev_nvme_options_decoders[] = 
 	{"ctrlr_loss_timeout_sec", offsetof(struct spdk_bdev_nvme_opts, ctrlr_loss_timeout_sec), spdk_json_decode_int32, true},
 	{"reconnect_delay_sec", offsetof(struct spdk_bdev_nvme_opts, reconnect_delay_sec), spdk_json_decode_uint32, true},
 	{"fast_io_fail_timeout_sec", offsetof(struct spdk_bdev_nvme_opts, fast_io_fail_timeout_sec), spdk_json_decode_uint32, true},
+	{"ss_reset_action_timeout_us", offsetof(struct spdk_bdev_nvme_opts, ss_reset_action_timeout_us), spdk_json_decode_uint64, true},
 };
 
 static void

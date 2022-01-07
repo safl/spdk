@@ -509,12 +509,13 @@ if __name__ == "__main__":
                                        transport_ack_timeout=args.transport_ack_timeout,
                                        ctrlr_loss_timeout_sec=args.ctrlr_loss_timeout_sec,
                                        reconnect_delay_sec=args.reconnect_delay_sec,
-                                       fast_io_fail_timeout_sec=args.fast_io_fail_timeout_sec)
+                                       fast_io_fail_timeout_sec=args.fast_io_fail_timeout_sec,
+                                       ss_reset_action_timeout_us=args.ss_reset_action_timeout_us)
 
     p = subparsers.add_parser('bdev_nvme_set_options', aliases=['set_bdev_nvme_options'],
                               help='Set options for the bdev nvme type. This is startup command.')
     p.add_argument('-a', '--action-on-timeout',
-                   help="Action to take on command time out. Valid values are: none, reset, abort")
+                   help="Action to take on command time out. Valid values are: none, reset, abort, subsystem_reset")
     p.add_argument('-t', '--timeout-us',
                    help="Timeout for each command, in microseconds. If 0, don't track timeouts.", type=int)
     p.add_argument('--timeout-admin-us',
@@ -569,6 +570,9 @@ if __name__ == "__main__":
                    If fast_io_fail_timeout_sec is not zero, it has to be not less than reconnect_delay_sec and
                    less than ctrlr_loss_timeout_sec if ctrlr_loss_timeout_sec is not -1.
                    This can be overridden by bdev_nvme_attach_controller.""",
+                   type=int)
+    p.add_argument('-w', '--ss-reset-action-timeout-us',
+                   help='When a subsystem reset action fails to complete, a SPDK notify event is generated after the specified timeout.',
                    type=int)
 
     p.set_defaults(func=bdev_nvme_set_options)

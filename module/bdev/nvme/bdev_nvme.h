@@ -154,6 +154,9 @@ struct nvme_ctrlr {
 	struct nvme_async_probe_ctx		*probe_ctx;
 
 	pthread_mutex_t				mutex;
+
+	/* Poller used to time out a NVMe subsystem reset */
+	struct spdk_poller			*ss_reset_timer;
 };
 
 struct nvme_bdev_ctrlr {
@@ -239,8 +242,9 @@ struct nvme_ns *nvme_ctrlr_get_next_active_ns(struct nvme_ctrlr *nvme_ctrlr, str
 
 enum spdk_bdev_timeout_action {
 	SPDK_BDEV_NVME_TIMEOUT_ACTION_NONE = 0,
-	SPDK_BDEV_NVME_TIMEOUT_ACTION_RESET,
+	SPDK_BDEV_NVME_TIMEOUT_ACTION_CONTROLLER_RESET,
 	SPDK_BDEV_NVME_TIMEOUT_ACTION_ABORT,
+	SPDK_BDEV_NVME_TIMEOUT_ACTION_SUBSYSTEM_RESET,
 };
 
 struct spdk_bdev_nvme_opts {
@@ -264,6 +268,7 @@ struct spdk_bdev_nvme_opts {
 	int32_t ctrlr_loss_timeout_sec;
 	uint32_t reconnect_delay_sec;
 	uint32_t fast_io_fail_timeout_sec;
+	uint64_t ss_reset_action_timeout_us;
 };
 
 struct spdk_nvme_qpair *bdev_nvme_get_io_qpair(struct spdk_io_channel *ctrlr_io_ch);
