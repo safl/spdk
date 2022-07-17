@@ -571,6 +571,9 @@ thread_exit(struct spdk_thread *thread, uint64_t now)
 
 exited:
 	thread->state = SPDK_THREAD_STATE_EXITED;
+	if (spdk_unlikely(thread->in_interrupt)) {
+		g_thread_op_fn(thread, SPDK_THREAD_OP_RESCHED);
+	}
 }
 
 int
@@ -1840,7 +1843,13 @@ _on_thread(void *ctx)
 	ct->fn(ct->ctx);
 
 	pthread_mutex_lock(&g_devlist_mutex);
-	ct->cur_thread = TAILQ_NEXT(ct->cur_thread, tailq);
+	while (1) {
+		ct->cur_thread = TAILQ_NEXT(ct->cur_thread, tailq);
+		if (ct->cur_thread == NULL || ct->cur_thread->state == SPDK_THREAD_STATE_RUNNING) {
+			break;
+		}
+		SPDK_WARNLOG("thread %s is not running but still not destroyed.\n", ct->cur_thread->name);
+	}
 	pthread_mutex_unlock(&g_devlist_mutex);
 
 	if (!ct->cur_thread) {
