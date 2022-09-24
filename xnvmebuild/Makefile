@@ -10,7 +10,11 @@ include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
 all:
 	(cd $(SPDK_ROOT_DIR)/xnvme && \
-		meson setup builddir -Dwith-spdk=false -Dwith-fio=false -Dshared_library=false && \
+		meson setup builddir \
+		-Dwith-spdk=false \
+		-Dwith-fio=false \
+		-Dwith-libvfn=false \
+		-Dshared_library=false && \
 		meson compile -C builddir && \
 		cd -)
 
