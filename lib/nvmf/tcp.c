@@ -412,6 +412,7 @@ nvmf_tcp_req_get(struct spdk_nvmf_tcp_qpair *tqpair)
 		return NULL;
 	}
 
+	tcp_req->pdu = tqpair->pdu_in_progress;
 	memset(&tcp_req->rsp, 0, sizeof(tcp_req->rsp));
 	tcp_req->h2c_offset = 0;
 	tcp_req->has_in_capsule_data = false;
@@ -429,6 +430,8 @@ nvmf_tcp_req_put(struct spdk_nvmf_tcp_qpair *tqpair, struct spdk_nvmf_tcp_req *t
 {
 	assert(!tcp_req->pdu_in_use);
 
+	SLIST_INSERT_HEAD(&tqpair->tcp_pdu_free_queue, tcp_req->pdu, slist);
+	tcp_req->pdu = NULL;
 	TAILQ_REMOVE(&tqpair->tcp_req_working_queue, tcp_req, state_link);
 	TAILQ_INSERT_TAIL(&tqpair->tcp_req_free_queue, tcp_req, state_link);
 	nvmf_tcp_req_set_state(tcp_req, TCP_REQUEST_STATE_FREE);
@@ -1023,7 +1026,8 @@ nvmf_tcp_qpair_write_pdu(struct spdk_nvmf_tcp_qpair *tqpair,
 	int hlen;
 	uint32_t crc32c;
 
-	assert(tqpair->pdu_in_progress != pdu);
+	assert(tqpair->pdu_in_progress != pdu ||
+	       tqpair->recv_state == NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU);
 
 	hlen = pdu->hdr.common.hlen;
 	pdu->cb_fn = cb_fn;
@@ -1103,9 +1107,10 @@ nvmf_tcp_qpair_init_mem_resource(struct spdk_nvmf_tcp_qpair *tqpair)
 			return -1;
 		}
 	}
-	/* prepare memory space for receiving pdus and tcp_req */
-	/* Add additional 1 member, which will be used for mgmt_pdu owned by the tqpair */
-	tqpair->pdus = spdk_dma_zmalloc((2 * tqpair->resource_count + 1) * sizeof(*tqpair->pdus), 0x1000,
+	/* Prepare memory space for receiving pdus and tcp_req
+	 * Add additional 2 member, one for mgmt_pdu, one for recv_pdu
+	 * The extra 1 recv_pdu will guarantee target can still recevie pdus when it has maximum requests */
+	tqpair->pdus = spdk_dma_zmalloc((tqpair->resource_count + 2) * sizeof(*tqpair->pdus), 0x1000,
 					NULL);
 	if (!tqpair->pdus) {
 		SPDK_ERRLOG("Unable to allocate pdu pool on tqpair =%p.\n", tqpair);
@@ -1114,12 +1119,13 @@ nvmf_tcp_qpair_init_mem_resource(struct spdk_nvmf_tcp_qpair *tqpair)
 
 	for (i = 0; i < tqpair->resource_count; i++) {
 		struct spdk_nvmf_tcp_req *tcp_req = &tqpair->reqs[i];
+		struct nvme_tcp_pdu *pdu = &tqpair->pdus[i];
+
+		pdu->qpair = tqpair;
+		SLIST_INSERT_HEAD(&tqpair->tcp_pdu_free_queue, pdu, slist);
 
 		tcp_req->ttag = i + 1;
 		tcp_req->req.qpair = &tqpair->qpair;
-
-		tcp_req->pdu = &tqpair->pdus[i];
-		tcp_req->pdu->qpair = tqpair;
 
 		/* Set up memory to receive commands */
 		if (tqpair->bufs) {
@@ -1138,17 +1144,10 @@ nvmf_tcp_qpair_init_mem_resource(struct spdk_nvmf_tcp_qpair *tqpair)
 		tqpair->state_cntr[TCP_REQUEST_STATE_FREE]++;
 	}
 
-	for (; i < 2 * tqpair->resource_count; i++) {
-		struct nvme_tcp_pdu *pdu = &tqpair->pdus[i];
-
-		pdu->qpair = tqpair;
-		SLIST_INSERT_HEAD(&tqpair->tcp_pdu_free_queue, pdu, slist);
-	}
-
+	tqpair->pdu_in_progress = &tqpair->pdus[i++];
+	tqpair->pdu_in_progress->qpair = tqpair;
 	tqpair->mgmt_pdu = &tqpair->pdus[i];
 	tqpair->mgmt_pdu->qpair = tqpair;
-	tqpair->pdu_in_progress = SLIST_FIRST(&tqpair->tcp_pdu_free_queue);
-	SLIST_REMOVE_HEAD(&tqpair->tcp_pdu_free_queue, slist);
 
 	tqpair->recv_buf_size = (in_capsule_data_size + sizeof(struct spdk_nvme_tcp_cmd) + 2 *
 				 SPDK_NVME_TCP_DIGEST_LEN) * SPDK_NVMF_TCP_RECV_BUF_SIZE_FACTOR;
@@ -1858,10 +1857,12 @@ _nvmf_tcp_pdu_payload_handle(struct spdk_nvmf_tcp_qpair *tqpair, struct nvme_tcp
 		break;
 	case SPDK_NVME_TCP_PDU_TYPE_H2C_DATA:
 		nvmf_tcp_h2c_data_payload_handle(ttransport, tqpair, pdu);
+		SLIST_INSERT_HEAD(&tqpair->tcp_pdu_free_queue, pdu, slist);
 		break;
 
 	case SPDK_NVME_TCP_PDU_TYPE_H2C_TERM_REQ:
 		nvmf_tcp_h2c_term_req_payload_handle(tqpair, pdu);
+		SLIST_INSERT_HEAD(&tqpair->tcp_pdu_free_queue, pdu, slist);
 		break;
 
 	default:
@@ -1869,7 +1870,6 @@ _nvmf_tcp_pdu_payload_handle(struct spdk_nvmf_tcp_qpair *tqpair, struct nvme_tcp
 		SPDK_ERRLOG("ERROR pdu type %d\n", pdu->hdr.common.pdu_type);
 		break;
 	}
-	SLIST_INSERT_HEAD(&tqpair->tcp_pdu_free_queue, pdu, slist);
 }
 
 static void
@@ -2736,7 +2736,7 @@ nvmf_tcp_req_process(struct spdk_nvmf_tcp_transport *ttransport,
 				tcp_req->req.rsp->nvme_cpl.status.sct = SPDK_NVME_SCT_GENERIC;
 				tcp_req->req.rsp->nvme_cpl.status.sc  = SPDK_NVME_SC_INVALID_OPCODE;
 				tcp_req->req.rsp->nvme_cpl.cid = tcp_req->req.cmd->nvme_cmd.cid;
-				nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
+				nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU);
 				nvmf_tcp_req_set_state(tcp_req, TCP_REQUEST_STATE_READY_TO_COMPLETE);
 				SPDK_DEBUGLOG(nvmf_tcp, "Request %p: invalid xfer type (BIDIRECTIONAL)\n", tcp_req);
 				break;
@@ -2745,7 +2745,7 @@ nvmf_tcp_req_process(struct spdk_nvmf_tcp_transport *ttransport,
 			/* If no data to transfer, ready to execute. */
 			if (tcp_req->req.xfer == SPDK_NVME_DATA_NONE) {
 				/* Reset the tqpair receiving pdu state */
-				nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
+				nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU);
 				nvmf_tcp_req_set_state(tcp_req, TCP_REQUEST_STATE_READY_TO_EXECUTE);
 				break;
 			}
@@ -2759,7 +2759,7 @@ nvmf_tcp_req_process(struct spdk_nvmf_tcp_transport *ttransport,
 				tcp_req->has_in_capsule_data = true;
 			} else {
 				/* Data is transmitted by C2H PDUs */
-				nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
+				nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU);
 			}
 
 			nvmf_tcp_req_set_state(tcp_req, TCP_REQUEST_STATE_NEED_BUFFER);

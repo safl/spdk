@@ -766,25 +766,20 @@ test_nvmf_tcp_qpair_init_mem_resource(void)
 	/* Just to check the first and last entry */
 	CU_ASSERT(tqpair->reqs[0].ttag == 1);
 	CU_ASSERT(tqpair->reqs[0].req.qpair == &tqpair->qpair);
-	CU_ASSERT(tqpair->reqs[0].pdu == &tqpair->pdus[0]);
-	CU_ASSERT(tqpair->reqs[0].pdu->qpair == &tqpair->qpair);
 	CU_ASSERT(tqpair->reqs[0].buf == (void *)((uintptr_t)tqpair->bufs));
 	CU_ASSERT(tqpair->reqs[0].req.rsp == (void *)&tqpair->reqs[0].rsp);
 	CU_ASSERT(tqpair->reqs[0].req.cmd == (void *)&tqpair->reqs[0].cmd);
 	CU_ASSERT(tqpair->reqs[0].state == TCP_REQUEST_STATE_FREE);
 	CU_ASSERT(tqpair->reqs[127].ttag == 128);
 	CU_ASSERT(tqpair->reqs[127].req.qpair == &tqpair->qpair);
-	CU_ASSERT(tqpair->reqs[127].pdu == &tqpair->pdus[127]);
-	CU_ASSERT(tqpair->reqs[127].pdu->qpair == &tqpair->qpair);
 	CU_ASSERT(tqpair->reqs[127].buf == (void *)((uintptr_t)tqpair->bufs) + 127 * 4096);
 	CU_ASSERT(tqpair->reqs[127].req.rsp == (void *)&tqpair->reqs[127].rsp);
 	CU_ASSERT(tqpair->reqs[127].req.cmd == (void *)&tqpair->reqs[127].cmd);
 	CU_ASSERT(tqpair->reqs[127].state == TCP_REQUEST_STATE_FREE);
 	CU_ASSERT(tqpair->state_cntr[TCP_REQUEST_STATE_FREE] == SPDK_NVMF_TCP_DEFAULT_MAX_IO_QUEUE_DEPTH);
-	CU_ASSERT(tqpair->mgmt_pdu == &tqpair->pdus[2 * SPDK_NVMF_TCP_DEFAULT_MAX_IO_QUEUE_DEPTH]);
+	CU_ASSERT(tqpair->mgmt_pdu == &tqpair->pdus[SPDK_NVMF_TCP_DEFAULT_MAX_IO_QUEUE_DEPTH + 1]);
 	CU_ASSERT(tqpair->mgmt_pdu->qpair == tqpair);
-	CU_ASSERT(tqpair->pdu_in_progress ==
-		  &tqpair->pdus[2 * SPDK_NVMF_TCP_DEFAULT_MAX_IO_QUEUE_DEPTH - 1]);
+	CU_ASSERT(tqpair->pdu_in_progress == &tqpair->pdus[SPDK_NVMF_TCP_DEFAULT_MAX_IO_QUEUE_DEPTH]);
 	CU_ASSERT(tqpair->recv_buf_size == (4096 + sizeof(struct spdk_nvme_tcp_cmd) + 2 *
 					    SPDK_NVME_TCP_DIGEST_LEN) * SPDK_NVMF_TCP_RECV_BUF_SIZE_FACTOR);
 
@@ -997,7 +992,7 @@ test_nvmf_tcp_check_xfer_type(void)
 	nvmf_tcp_req_process(&ttransport, &tcp_req);
 	CU_ASSERT(STAILQ_EMPTY(&group->pending_buf_queue));
 	CU_ASSERT(tcp_req.state == TCP_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST);
-	CU_ASSERT(tqpair.recv_state == NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
+	CU_ASSERT(tqpair.recv_state == NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU);
 	CU_ASSERT(tcp_req.req.rsp->nvme_cpl.cid == cid);
 	CU_ASSERT(tcp_req.req.rsp->nvme_cpl.status.sct == SPDK_NVME_SCT_GENERIC);
 	CU_ASSERT(tcp_req.req.rsp->nvme_cpl.status.sc == SPDK_NVME_SC_INVALID_OPCODE);
