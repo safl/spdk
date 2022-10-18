@@ -1902,8 +1902,7 @@ nvmf_tcp_pdu_payload_handle(struct spdk_nvmf_tcp_qpair *tqpair, struct nvme_tcp_
 {
 	int rc = 0;
 	assert(tqpair->recv_state == NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_PAYLOAD);
-	tqpair->pdu_in_progress = NULL;
-	nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
+	nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU);
 	SPDK_DEBUGLOG(nvmf_tcp, "enter\n");
 	/* check data digest if need */
 	if (pdu->ddgst_enable) {
@@ -2165,21 +2164,20 @@ nvmf_tcp_sock_process(struct spdk_nvmf_tcp_qpair *tqpair)
 		SPDK_DEBUGLOG(nvmf_tcp, "tqpair(%p) recv pdu entering state %d\n", tqpair, prev_state);
 
 		pdu = tqpair->pdu_in_progress;
-		assert(pdu || tqpair->recv_state == NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
 		switch (tqpair->recv_state) {
-		/* Wait for the common header  */
-		case NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY:
-			if (!pdu) {
-				pdu = SLIST_FIRST(&tqpair->tcp_pdu_free_queue);
-				if (spdk_unlikely(!pdu)) {
-					return NVME_TCP_PDU_IN_PROGRESS;
-				}
-				SLIST_REMOVE_HEAD(&tqpair->tcp_pdu_free_queue, slist);
-				tqpair->pdu_in_progress = pdu;
+		case NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU:
+			pdu = SLIST_FIRST(&tqpair->tcp_pdu_free_queue);
+			if (spdk_unlikely(!pdu)) {
+				return NVME_TCP_PDU_IN_PROGRESS;
 			}
+			SLIST_REMOVE_HEAD(&tqpair->tcp_pdu_free_queue, slist);
+			tqpair->pdu_in_progress = pdu;
+		/* FALLTHROUGH */
+		case NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY:
 			memset(pdu, 0, offsetof(struct nvme_tcp_pdu, qpair));
 			nvmf_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_CH);
 		/* FALLTHROUGH */
+		/* Wait for the common header  */
 		case NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_CH:
 			if (spdk_unlikely(tqpair->state == NVME_TCP_QPAIR_STATE_INITIALIZING)) {
 				return rc;

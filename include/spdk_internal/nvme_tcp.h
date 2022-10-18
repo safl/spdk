@@ -105,6 +105,9 @@ SPDK_STATIC_ASSERT(offsetof(struct nvme_tcp_pdu,
 		   "Compiler inserted padding between iov and sock_req");
 
 enum nvme_tcp_pdu_recv_state {
+	/* Active tqpair needs a new PDU */
+	NVME_TCP_PDU_RECV_STATE_NEED_NEW_PDU,
+
 	/* Ready to wait for PDU */
 	NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY,
 
