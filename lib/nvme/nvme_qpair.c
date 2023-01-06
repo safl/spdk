@@ -1133,6 +1133,9 @@ spdk_nvme_qpair_add_cmd_error_injection(struct spdk_nvme_ctrlr *ctrlr,
 
 	if (qpair == NULL) {
 		qpair = ctrlr->adminq;
+	}
+
+	if (nvme_qpair_is_admin_queue(qpair)) {
 		nvme_robust_mutex_lock(&ctrlr->ctrlr_lock);
 	}
 
@@ -1175,6 +1178,9 @@ spdk_nvme_qpair_remove_cmd_error_injection(struct spdk_nvme_ctrlr *ctrlr,
 
 	if (qpair == NULL) {
 		qpair = ctrlr->adminq;
+	}
+
+	if (nvme_qpair_is_admin_queue(qpair)) {
 		nvme_robust_mutex_lock(&ctrlr->ctrlr_lock);
 	}
 
