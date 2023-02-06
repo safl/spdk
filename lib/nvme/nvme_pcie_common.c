@@ -1579,6 +1579,10 @@ static build_req_fn const g_nvme_pcie_build_req_table[][2] = {
 	[NVME_PAYLOAD_TYPE_SGL] = {
 		nvme_pcie_qpair_build_prps_sgl_request,			/* PRP */
 		nvme_pcie_qpair_build_hw_sgl_request			/* SGL */
+	},
+	[NVME_PAYLOAD_TYPE_ZCOPY] = {
+		nvme_pcie_qpair_build_request_invalid,			/* PRP */
+		nvme_pcie_qpair_build_request_invalid			/* SGL */
 	}
 };
 

@@ -591,6 +591,8 @@ nvme_tcp_req_init(struct nvme_tcp_qpair *tqpair, struct nvme_request *req,
 		rc = nvme_tcp_build_contig_request(tqpair, tcp_req);
 	} else if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL) {
 		rc = nvme_tcp_build_sgl_request(tqpair, tcp_req);
+	} else if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_ZCOPY) {
+		/* No work to do yet. */
 	} else {
 		rc = -1;
 	}
@@ -606,6 +608,13 @@ nvme_tcp_req_init(struct nvme_tcp_qpair *tqpair, struct nvme_request *req,
 	} else {
 		xfer = spdk_nvme_opc_get_data_transfer(req->cmd.opc);
 	}
+
+	if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_ZCOPY &&
+	    xfer != SPDK_NVME_DATA_CONTROLLER_TO_HOST) {
+		/* Can only support zcopy payloads for controller to host */
+		return -1;
+	}
+
 	if (xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER) {
 		max_in_capsule_data_size = ctrlr->ioccsz_bytes;
 		if ((req->cmd.opc == SPDK_NVME_OPC_FABRIC) || nvme_qpair_is_admin_queue(&tqpair->qpair)) {

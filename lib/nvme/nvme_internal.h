@@ -203,6 +203,9 @@ enum nvme_payload_type {
 
 	/** nvme_request::u.sgl is valid for this request */
 	NVME_PAYLOAD_TYPE_SGL,
+
+	/** The transport is expected to allocate memory to service this request */
+	NVME_PAYLOAD_TYPE_ZCOPY,
 };
 
 /** Boot partition write states */
@@ -272,6 +275,11 @@ SPDK_STATIC_ASSERT(sizeof(void *) == 8, "Only 64 bit architectures are supported
 		.t.sgl.next_sge_fn = (next_sge_fn_), \
 		.t.sgl.cb_arg = (cb_arg_), \
 		.t.sgl.md = (md_), \
+	}
+
+#define NVME_PAYLOAD_ZCOPY() \
+	(struct nvme_payload) { \
+		.opts = (struct spdk_nvme_ns_cmd_ext_io_opts *)((uint64_t)NVME_PAYLOAD_TYPE_ZCOPY << 62), \
 	}
 
 static inline enum nvme_payload_type
