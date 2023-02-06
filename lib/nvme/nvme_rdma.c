@@ -1433,19 +1433,22 @@ nvme_rdma_get_memory_translation(struct nvme_request *req, struct nvme_rdma_qpai
 	struct spdk_memory_domain_translation_ctx ctx;
 	struct spdk_memory_domain_translation_result dma_translation = {.iov_count = 0};
 	struct spdk_rdma_memory_translation rdma_translation;
+	struct spdk_nvme_ns_cmd_ext_io_opts *opts;
 	int rc;
 
 	assert(req);
 	assert(rqpair);
 	assert(_ctx);
 
-	if (req->payload.opts && req->payload.opts->memory_domain) {
+	opts = NVME_PAYLOAD_GET_OPTS(&req->payload);
+
+	if (opts && opts->memory_domain) {
 		ctx.size = sizeof(struct spdk_memory_domain_translation_ctx);
 		ctx.rdma.ibv_qp = rqpair->rdma_qp->qp;
 		dma_translation.size = sizeof(struct spdk_memory_domain_translation_result);
 
-		rc = spdk_memory_domain_translate_data(req->payload.opts->memory_domain,
-						       req->payload.opts->memory_domain_ctx,
+		rc = spdk_memory_domain_translate_data(opts->memory_domain,
+						       opts->memory_domain_ctx,
 						       rqpair->memory_domain->domain, &ctx, _ctx->addr,
 						       _ctx->length, &dma_translation);
 		if (spdk_unlikely(rc) || dma_translation.iov_count != 1) {
@@ -1512,7 +1515,7 @@ nvme_rdma_build_contig_inline_request(struct nvme_rdma_qpair *rqpair,
 {
 	struct nvme_request *req = rdma_req->req;
 	struct nvme_rdma_memory_translation_ctx ctx = {
-		.addr = req->payload.contig_or_cb_arg + req->payload_offset,
+		.addr = req->payload.t.contig.buf + req->payload_offset,
 		.length = req->payload_size
 	};
 	int rc;
@@ -1561,7 +1564,7 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 {
 	struct nvme_request *req = rdma_req->req;
 	struct nvme_rdma_memory_translation_ctx ctx = {
-		.addr = req->payload.contig_or_cb_arg + req->payload_offset,
+		.addr = req->payload.t.contig.buf + req->payload_offset,
 		.length = req->payload_size
 	};
 	int rc;
@@ -1616,16 +1619,16 @@ nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
 
 	assert(req->payload_size != 0);
 	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
-	assert(req->payload.reset_sgl_fn != NULL);
-	assert(req->payload.next_sge_fn != NULL);
-	req->payload.reset_sgl_fn(req->payload.contig_or_cb_arg, req->payload_offset);
+	assert(req->payload.t.sgl.reset_sgl_fn != NULL);
+	assert(req->payload.t.sgl.next_sge_fn != NULL);
+	req->payload.t.sgl.reset_sgl_fn(req->payload.t.sgl.cb_arg, req->payload_offset);
 
 	max_num_sgl = req->qpair->ctrlr->max_sges;
 
 	remaining_size = req->payload_size;
 	num_sgl_desc = 0;
 	do {
-		rc = req->payload.next_sge_fn(req->payload.contig_or_cb_arg, &ctx.addr, &sge_length);
+		rc = req->payload.t.sgl.next_sge_fn(req->payload.t.sgl.cb_arg, &ctx.addr, &sge_length);
 		if (rc) {
 			return -1;
 		}
@@ -1718,11 +1721,11 @@ nvme_rdma_build_sgl_inline_request(struct nvme_rdma_qpair *rqpair,
 
 	assert(req->payload_size != 0);
 	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
-	assert(req->payload.reset_sgl_fn != NULL);
-	assert(req->payload.next_sge_fn != NULL);
-	req->payload.reset_sgl_fn(req->payload.contig_or_cb_arg, req->payload_offset);
+	assert(req->payload.t.sgl.reset_sgl_fn != NULL);
+	assert(req->payload.t.sgl.next_sge_fn != NULL);
+	req->payload.t.sgl.reset_sgl_fn(req->payload.t.sgl.cb_arg, req->payload_offset);
 
-	rc = req->payload.next_sge_fn(req->payload.contig_or_cb_arg, &ctx.addr, &length);
+	rc = req->payload.t.sgl.next_sge_fn(req->payload.t.sgl.cb_arg, &ctx.addr, &length);
 	if (rc) {
 		return -1;
 	}

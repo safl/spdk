@@ -515,13 +515,11 @@ nvme_tcp_build_contig_request(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_req
 {
 	struct nvme_request *req = tcp_req->req;
 
-	tcp_req->iov[0].iov_base = req->payload.contig_or_cb_arg + req->payload_offset;
+	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_CONTIG);
+
+	tcp_req->iov[0].iov_base = req->payload.t.contig.buf + req->payload_offset;
 	tcp_req->iov[0].iov_len = req->payload_size;
 	tcp_req->iovcnt = 1;
-
-	SPDK_DEBUGLOG(nvme, "enter\n");
-
-	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_CONTIG);
 
 	return 0;
 }
@@ -540,16 +538,16 @@ nvme_tcp_build_sgl_request(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_req *t
 
 	assert(req->payload_size != 0);
 	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
-	assert(req->payload.reset_sgl_fn != NULL);
-	assert(req->payload.next_sge_fn != NULL);
-	req->payload.reset_sgl_fn(req->payload.contig_or_cb_arg, req->payload_offset);
+	assert(req->payload.t.sgl.reset_sgl_fn != NULL);
+	assert(req->payload.t.sgl.next_sge_fn != NULL);
+	req->payload.t.sgl.reset_sgl_fn(req->payload.t.sgl.cb_arg, req->payload_offset);
 
 	max_num_sgl = spdk_min(req->qpair->ctrlr->max_sges, NVME_TCP_MAX_SGL_DESCRIPTORS);
 	remaining_size = req->payload_size;
 
 	do {
-		rc = req->payload.next_sge_fn(req->payload.contig_or_cb_arg, &tcp_req->iov[iovcnt].iov_base,
-					      &length);
+		rc = req->payload.t.sgl.next_sge_fn(req->payload.t.sgl.cb_arg, &tcp_req->iov[iovcnt].iov_base,
+						    &length);
 		if (rc) {
 			return -1;
 		}

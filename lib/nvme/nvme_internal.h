@@ -218,47 +218,65 @@ enum nvme_bp_write_state {
  */
 struct nvme_payload {
 	/**
-	 * Functions for retrieving physical addresses for scattered payloads.
-	 */
-	spdk_nvme_req_reset_sgl_cb reset_sgl_fn;
-	spdk_nvme_req_next_sge_cb next_sge_fn;
-
-	/**
-	 * Extended IO options passed by the user
+	 * Extended IO options passed by the user.
+	 *
+	 * Use NVME_PAYLOAD_GET_OPTS() and NVME_PAYLOAD_SET_OPTS() to
+	 * access this field.
 	 */
 	struct spdk_nvme_ns_cmd_ext_io_opts *opts;
-	/**
-	 * If reset_sgl_fn == NULL, this is a contig payload, and contig_or_cb_arg contains the
-	 * virtual memory address of a single virtually contiguous buffer.
-	 *
-	 * If reset_sgl_fn != NULL, this is a SGL payload, and contig_or_cb_arg contains the
-	 * cb_arg that will be passed to the SGL callback functions.
-	 */
-	void *contig_or_cb_arg;
 
-	/** Virtual memory address of a single virtually contiguous metadata buffer */
-	void *md;
+	union {
+		struct {
+			/**
+			 * Functions for retrieving physical addresses for scattered payloads.
+			 */
+			spdk_nvme_req_reset_sgl_cb reset_sgl_fn;
+			spdk_nvme_req_next_sge_cb next_sge_fn;
+			void *cb_arg;
+
+			/** Virtual memory address of a single virtually contiguous metadata buffer */
+			void *md;
+		} sgl;
+
+		struct {
+			void *buf;
+
+			/** Virtual memory address of a single virtually contiguous metadata buffer */
+			void *md;
+		} contig;
+	} t;
 };
+
+SPDK_STATIC_ASSERT(sizeof(void *) == 8, "Only 64 bit architectures are supported");
+#define TOP_TWO_BITS (3ULL << 62)
+
+#define NVME_PAYLOAD_SET_OPTS(payload_, opts_) \
+	(payload_)->opts = \
+	(struct spdk_nvme_ns_cmd_ext_io_opts *)(((uint64_t)(payload_)->opts & TOP_TWO_BITS) | \
+	(uint64_t)opts_)
+
+#define NVME_PAYLOAD_GET_OPTS(payload_) \
+	((struct spdk_nvme_ns_cmd_ext_io_opts *)(((uint64_t)(payload_)->opts) & ~TOP_TWO_BITS))
 
 #define NVME_PAYLOAD_CONTIG(contig_, md_) \
 	(struct nvme_payload) { \
-		.reset_sgl_fn = NULL, \
-		.next_sge_fn = NULL, \
-		.contig_or_cb_arg = (contig_), \
-		.md = (md_), \
+		.opts = (struct spdk_nvme_ns_cmd_ext_io_opts *)((uint64_t)NVME_PAYLOAD_TYPE_CONTIG << 62), \
+		.t.contig.buf = (contig_), \
+		.t.contig.md = (md_), \
 	}
 
 #define NVME_PAYLOAD_SGL(reset_sgl_fn_, next_sge_fn_, cb_arg_, md_) \
 	(struct nvme_payload) { \
-		.reset_sgl_fn = (reset_sgl_fn_), \
-		.next_sge_fn = (next_sge_fn_), \
-		.contig_or_cb_arg = (cb_arg_), \
-		.md = (md_), \
+		.opts = (struct spdk_nvme_ns_cmd_ext_io_opts *)((uint64_t)NVME_PAYLOAD_TYPE_SGL << 62), \
+		.t.sgl.reset_sgl_fn = (reset_sgl_fn_), \
+		.t.sgl.next_sge_fn = (next_sge_fn_), \
+		.t.sgl.cb_arg = (cb_arg_), \
+		.t.sgl.md = (md_), \
 	}
 
 static inline enum nvme_payload_type
 nvme_payload_type(const struct nvme_payload *payload) {
-	return payload->reset_sgl_fn ? NVME_PAYLOAD_TYPE_SGL : NVME_PAYLOAD_TYPE_CONTIG;
+	return ((uint64_t)payload->opts >> 62);
 }
 
 struct nvme_error_cmd {

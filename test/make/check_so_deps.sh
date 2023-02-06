@@ -104,6 +104,11 @@ function confirm_abi_deps() {
 # To be removed, comes from nvme_internal.h
 [suppress_type]
 	name = spdk_nvme_qpair
+# Also to be removed, from nvme_internal.h
+[suppress_type]
+	name = nvme_payload
+[suppress_type]
+	name = nvme_request
 EOF
 
 	for object in "$libdir"/libspdk_*.so; do

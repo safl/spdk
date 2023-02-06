@@ -381,7 +381,7 @@ test_nvme_rdma_build_contig_request(void)
 	CU_ASSERT(req.cmd.dptr.sgl1.keyed.subtype == SPDK_NVME_SGL_SUBTYPE_ADDRESS);
 	CU_ASSERT(req.cmd.dptr.sgl1.keyed.length == req.payload_size);
 	CU_ASSERT(req.cmd.dptr.sgl1.keyed.key == RDMA_UT_RKEY);
-	CU_ASSERT(req.cmd.dptr.sgl1.address == (uint64_t)req.payload.contig_or_cb_arg);
+	CU_ASSERT(req.cmd.dptr.sgl1.address == (uint64_t)req.payload.t.contig.buf);
 	CU_ASSERT(rdma_req.send_sgl[0].length == sizeof(struct spdk_nvme_cmd));
 
 	/* Test case 2: SGL length exceeds 3 bytes. Expected: FAIL */
@@ -426,7 +426,7 @@ test_nvme_rdma_build_contig_inline_request(void)
 	CU_ASSERT(req.cmd.dptr.sgl1.address == 0);
 	CU_ASSERT(rdma_req.send_sgl[0].length == sizeof(struct spdk_nvme_cmd));
 	CU_ASSERT(rdma_req.send_sgl[1].length == req.payload_size);
-	CU_ASSERT(rdma_req.send_sgl[1].addr == (uint64_t)req.payload.contig_or_cb_arg);
+	CU_ASSERT(rdma_req.send_sgl[1].addr == (uint64_t)req.payload.t.contig.buf);
 	CU_ASSERT(rdma_req.send_sgl[1].lkey == RDMA_UT_LKEY);
 
 	/* Test case 2: SGL length exceeds 3 bytes. Expected: PASS */
@@ -440,7 +440,7 @@ test_nvme_rdma_build_contig_inline_request(void)
 	CU_ASSERT(req.cmd.dptr.sgl1.address == 0);
 	CU_ASSERT(rdma_req.send_sgl[0].length == sizeof(struct spdk_nvme_cmd));
 	CU_ASSERT(rdma_req.send_sgl[1].length == req.payload_size);
-	CU_ASSERT(rdma_req.send_sgl[1].addr == (uint64_t)req.payload.contig_or_cb_arg);
+	CU_ASSERT(rdma_req.send_sgl[1].addr == (uint64_t)req.payload.t.contig.buf);
 	CU_ASSERT(rdma_req.send_sgl[1].lkey == RDMA_UT_LKEY);
 }
 
@@ -858,7 +858,7 @@ test_nvme_rdma_req_init(void)
 	CU_ASSERT(req.cmd.dptr.sgl1.address == 0);
 	CU_ASSERT(rdma_req.send_sgl[0].length == sizeof(struct spdk_nvme_cmd));
 	CU_ASSERT(rdma_req.send_sgl[1].length == req.payload_size);
-	CU_ASSERT(rdma_req.send_sgl[1].addr == (uint64_t)req.payload.contig_or_cb_arg);
+	CU_ASSERT(rdma_req.send_sgl[1].addr == (uint64_t)req.payload.t.contig.buf);
 	CU_ASSERT(rdma_req.send_sgl[1].lkey == RDMA_UT_LKEY);
 
 	/* icd_supported is false */
@@ -873,7 +873,7 @@ test_nvme_rdma_req_init(void)
 	CU_ASSERT(req.cmd.dptr.sgl1.keyed.subtype == SPDK_NVME_SGL_SUBTYPE_ADDRESS);
 	CU_ASSERT(req.cmd.dptr.sgl1.keyed.length == req.payload_size);
 	CU_ASSERT(req.cmd.dptr.sgl1.keyed.key == RDMA_UT_RKEY);
-	CU_ASSERT(req.cmd.dptr.sgl1.address == (uint64_t)req.payload.contig_or_cb_arg);
+	CU_ASSERT(req.cmd.dptr.sgl1.address == (uint64_t)req.payload.t.contig.buf);
 	CU_ASSERT(rdma_req.send_sgl[0].length == sizeof(struct spdk_nvme_cmd));
 
 	/* case 3: payload_type == NVME_PAYLOAD_TYPE_SGL, expect: pass. */

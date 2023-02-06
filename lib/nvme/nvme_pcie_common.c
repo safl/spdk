@@ -292,7 +292,7 @@ nvme_pcie_qpair_insert_pending_admin_request(struct spdk_nvme_qpair *qpair,
 		SPDK_ERRLOG("The owning process (pid %d) is not found. Dropping the request.\n",
 			    active_req->pid);
 		if (active_req->user_buffer && active_req->payload_size) {
-			spdk_free(active_req->payload.contig_or_cb_arg);
+			spdk_free(active_req->payload.t.contig.buf);
 		}
 		nvme_free_request(active_req);
 	}
@@ -1285,8 +1285,10 @@ nvme_pcie_qpair_build_contig_request(struct spdk_nvme_qpair *qpair, struct nvme_
 	uint32_t prp_index = 0;
 	int rc;
 
+	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_CONTIG);
+
 	rc = nvme_pcie_prp_list_append(qpair->ctrlr, tr, &prp_index,
-				       req->payload.contig_or_cb_arg + req->payload_offset,
+				       req->payload.t.contig.buf + req->payload_offset,
 				       req->payload_size, qpair->ctrlr->page_size);
 	if (rc) {
 		nvme_pcie_fail_request_bad_vtophys(qpair, tr);
@@ -1319,7 +1321,7 @@ nvme_pcie_qpair_build_contig_hw_sgl_request(struct spdk_nvme_qpair *qpair, struc
 	req->cmd.dptr.sgl1.unkeyed.subtype = 0;
 
 	length = req->payload_size;
-	virt_addr = req->payload.contig_or_cb_arg + req->payload_offset;
+	virt_addr = req->payload.t.contig.buf + req->payload_offset;
 
 	while (length > 0) {
 		if (nseg >= NVME_MAX_SGL_DESCRIPTORS) {
@@ -1395,9 +1397,9 @@ nvme_pcie_qpair_build_hw_sgl_request(struct spdk_nvme_qpair *qpair, struct nvme_
 	 */
 	assert(req->payload_size != 0);
 	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
-	assert(req->payload.reset_sgl_fn != NULL);
-	assert(req->payload.next_sge_fn != NULL);
-	req->payload.reset_sgl_fn(req->payload.contig_or_cb_arg, req->payload_offset);
+	assert(req->payload.t.sgl.reset_sgl_fn != NULL);
+	assert(req->payload.t.sgl.next_sge_fn != NULL);
+	req->payload.t.sgl.reset_sgl_fn(req->payload.t.sgl.cb_arg, req->payload_offset);
 
 	sgl = tr->u.sgl;
 	req->cmd.psdt = SPDK_NVME_PSDT_SGL_MPTR_CONTIG;
@@ -1406,8 +1408,8 @@ nvme_pcie_qpair_build_hw_sgl_request(struct spdk_nvme_qpair *qpair, struct nvme_
 	remaining_transfer_len = req->payload_size;
 
 	while (remaining_transfer_len > 0) {
-		rc = req->payload.next_sge_fn(req->payload.contig_or_cb_arg,
-					      &virt_addr, &remaining_user_sge_len);
+		rc = req->payload.t.sgl.next_sge_fn(req->payload.t.sgl.cb_arg,
+						    &virt_addr, &remaining_user_sge_len);
 		if (rc) {
 			nvme_pcie_fail_request_bad_vtophys(qpair, tr);
 			return -EFAULT;
@@ -1527,13 +1529,13 @@ nvme_pcie_qpair_build_prps_sgl_request(struct spdk_nvme_qpair *qpair, struct nvm
 	 * Build scattered payloads.
 	 */
 	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
-	assert(req->payload.reset_sgl_fn != NULL);
-	req->payload.reset_sgl_fn(req->payload.contig_or_cb_arg, req->payload_offset);
+	assert(req->payload.t.sgl.reset_sgl_fn != NULL);
+	req->payload.t.sgl.reset_sgl_fn(req->payload.t.sgl.cb_arg, req->payload_offset);
 
 	remaining_transfer_len = req->payload_size;
 	while (remaining_transfer_len > 0) {
-		assert(req->payload.next_sge_fn != NULL);
-		rc = req->payload.next_sge_fn(req->payload.contig_or_cb_arg, &virt_addr, &length);
+		assert(req->payload.t.sgl.next_sge_fn != NULL);
+		rc = req->payload.t.sgl.next_sge_fn(req->payload.t.sgl.cb_arg, &virt_addr, &length);
 		if (rc) {
 			nvme_pcie_fail_request_bad_vtophys(qpair, tr);
 			return -EFAULT;
@@ -1584,35 +1586,46 @@ static int
 nvme_pcie_qpair_build_metadata(struct spdk_nvme_qpair *qpair, struct nvme_tracker *tr,
 			       bool sgl_supported, bool mptr_sgl_supported, bool dword_aligned)
 {
-	void *md_payload;
+	void *md_payload = NULL;
 	struct nvme_request *req = tr->req;
 	uint64_t mapping_length;
 
-	if (req->payload.md) {
-		md_payload = req->payload.md + req->md_offset;
-		if (dword_aligned && ((uintptr_t)md_payload & 3)) {
-			SPDK_ERRLOG("virt_addr %p not dword aligned\n", md_payload);
+	if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL) {
+		if (req->payload.t.sgl.md != NULL) {
+			md_payload = req->payload.t.sgl.md + req->md_offset;
+		}
+	} else if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_CONTIG) {
+		if (req->payload.t.contig.md != NULL) {
+			md_payload = req->payload.t.contig.md + req->md_offset;
+		}
+	}
+
+	if (md_payload == NULL) {
+		return 0;
+	}
+
+	if (dword_aligned && ((uintptr_t)md_payload & 3)) {
+		SPDK_ERRLOG("virt_addr %p not dword aligned\n", md_payload);
+		goto exit;
+	}
+
+	mapping_length = req->md_size;
+	if (sgl_supported && mptr_sgl_supported && dword_aligned) {
+		assert(req->cmd.psdt == SPDK_NVME_PSDT_SGL_MPTR_CONTIG);
+		req->cmd.psdt = SPDK_NVME_PSDT_SGL_MPTR_SGL;
+
+		tr->meta_sgl.address = nvme_pcie_vtophys(qpair->ctrlr, md_payload, &mapping_length);
+		if (tr->meta_sgl.address == SPDK_VTOPHYS_ERROR || mapping_length != req->md_size) {
 			goto exit;
 		}
-
-		mapping_length = req->md_size;
-		if (sgl_supported && mptr_sgl_supported && dword_aligned) {
-			assert(req->cmd.psdt == SPDK_NVME_PSDT_SGL_MPTR_CONTIG);
-			req->cmd.psdt = SPDK_NVME_PSDT_SGL_MPTR_SGL;
-
-			tr->meta_sgl.address = nvme_pcie_vtophys(qpair->ctrlr, md_payload, &mapping_length);
-			if (tr->meta_sgl.address == SPDK_VTOPHYS_ERROR || mapping_length != req->md_size) {
-				goto exit;
-			}
-			tr->meta_sgl.unkeyed.type = SPDK_NVME_SGL_TYPE_DATA_BLOCK;
-			tr->meta_sgl.unkeyed.length = req->md_size;
-			tr->meta_sgl.unkeyed.subtype = 0;
-			req->cmd.mptr = tr->prp_sgl_bus_addr - sizeof(struct spdk_nvme_sgl_descriptor);
-		} else {
-			req->cmd.mptr = nvme_pcie_vtophys(qpair->ctrlr, md_payload, &mapping_length);
-			if (req->cmd.mptr == SPDK_VTOPHYS_ERROR || mapping_length != req->md_size) {
-				goto exit;
-			}
+		tr->meta_sgl.unkeyed.type = SPDK_NVME_SGL_TYPE_DATA_BLOCK;
+		tr->meta_sgl.unkeyed.length = req->md_size;
+		tr->meta_sgl.unkeyed.subtype = 0;
+		req->cmd.mptr = tr->prp_sgl_bus_addr - sizeof(struct spdk_nvme_sgl_descriptor);
+	} else {
+		req->cmd.mptr = nvme_pcie_vtophys(qpair->ctrlr, md_payload, &mapping_length);
+		if (req->cmd.mptr == SPDK_VTOPHYS_ERROR || mapping_length != req->md_size) {
+			goto exit;
 		}
 	}
 
@@ -1684,6 +1697,7 @@ nvme_pcie_qpair_submit_request(struct spdk_nvme_qpair *qpair, struct nvme_reques
 		 */
 		rc = g_nvme_pcie_build_req_table[payload_type][sgl_supported](qpair, req, tr, dword_aligned);
 		if (rc < 0) {
+			SPDK_ERRLOG("For type %d:%d, returned error %d\n", payload_type, sgl_supported, rc);
 			assert(rc == -EFAULT);
 			rc = 0;
 			goto exit;

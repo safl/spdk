@@ -531,7 +531,7 @@ test_nvme_tcp_req_init(void)
 
 	/* Test case1: payload type SGL. Expect: PASS */
 	req.cmd.opc = SPDK_NVME_DATA_HOST_TO_CONTROLLER;
-	req.payload.reset_sgl_fn = nvme_tcp_ut_reset_sgl;
+	req.payload.t.sgl.reset_sgl_fn = nvme_tcp_ut_reset_sgl;
 
 	rc = nvme_tcp_req_init(&tqpair, &req, &tcp_req);
 	CU_ASSERT(rc == 0);

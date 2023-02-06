@@ -648,7 +648,7 @@ test_nvme_ns_cmd_dataset_management(void)
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 	CU_ASSERT(g_request->cmd.cdw10 == 0);
 	CU_ASSERT(g_request->cmd.cdw11_bits.dsm.ad == 1);
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 
 	/* TRIM 256 LBAs */
@@ -660,7 +660,7 @@ test_nvme_ns_cmd_dataset_management(void)
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 	CU_ASSERT(g_request->cmd.cdw10 == 255u);
 	CU_ASSERT(g_request->cmd.cdw11_bits.dsm.ad == 1);
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 
 	rc = spdk_nvme_ns_cmd_dataset_management(&ns, &qpair, SPDK_NVME_DSM_ATTR_DEALLOCATE,
@@ -700,7 +700,7 @@ test_nvme_ns_cmd_copy(void)
 	nvme_cmd_interpret_rw(&g_request->cmd, &cmd_dest_lba, &cmd_range_count);
 	CU_ASSERT_EQUAL(cmd_dest_lba, 64);
 	CU_ASSERT_EQUAL(cmd_range_count, 1);
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 
 	/* COPY 64 LBAs */
@@ -713,7 +713,7 @@ test_nvme_ns_cmd_copy(void)
 	nvme_cmd_interpret_rw(&g_request->cmd, &cmd_dest_lba, &cmd_range_count);
 	CU_ASSERT_EQUAL(cmd_dest_lba, 64);
 	CU_ASSERT_EQUAL(cmd_range_count, 64);
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 
 	rc = spdk_nvme_ns_cmd_copy(&ns, &qpair, ranges,
@@ -743,9 +743,9 @@ test_nvme_ns_cmd_readv(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_READ);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 
 	rc = spdk_nvme_ns_cmd_readv(&ns, &qpair, 0x1000, 256, NULL, cb_arg, 0, nvme_request_reset_sgl,
@@ -795,9 +795,9 @@ test_nvme_ns_cmd_writev(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_WRITE);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 
 	/* Test case: NULL reset_sgl callback, expect fail */
@@ -820,9 +820,9 @@ test_nvme_ns_cmd_writev(void)
 				     nvme_request_reset_sgl, nvme_request_next_sge_invalid_prp1);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_WRITE);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge_invalid_prp1);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &iovs_cb_arg);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge_invalid_prp1);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &iovs_cb_arg);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 
 	nvme_free_request(g_request);
@@ -850,9 +850,9 @@ test_nvme_ns_cmd_comparev(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_COMPARE);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 
 	rc = spdk_nvme_ns_cmd_comparev(&ns, &qpair, 0x1000, 256, NULL, cb_arg, 0,
@@ -904,7 +904,7 @@ test_nvme_ns_cmd_comparev_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.sgl.md == metadata);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
 	nvme_free_request(g_request);
@@ -931,13 +931,13 @@ test_nvme_ns_cmd_comparev_with_md(void)
 	child0 = TAILQ_FIRST(&g_request->children);
 
 	SPDK_CU_ASSERT_FATAL(child0 != NULL);
-	CU_ASSERT(child0->payload.md == NULL);
+	CU_ASSERT(child0->payload.t.sgl.md == NULL);
 	CU_ASSERT(child0->payload_offset == 0);
 	CU_ASSERT(child0->payload_size == 204 * (512 + 128));
 	child1 = TAILQ_NEXT(child0, child_tailq);
 
 	SPDK_CU_ASSERT_FATAL(child1 != NULL);
-	CU_ASSERT(child1->payload.md == NULL);
+	CU_ASSERT(child1->payload.t.sgl.md == NULL);
 	CU_ASSERT(child1->payload_offset == 204 * (512 + 128));
 	CU_ASSERT(child1->payload_size == 52 * (512 + 128));
 
@@ -967,13 +967,13 @@ test_nvme_ns_cmd_comparev_with_md(void)
 	child0 = TAILQ_FIRST(&g_request->children);
 
 	SPDK_CU_ASSERT_FATAL(child0 != NULL);
-	CU_ASSERT(child0->payload.md == NULL);
+	CU_ASSERT(child0->payload.t.sgl.md == NULL);
 	CU_ASSERT(child0->payload_offset == 0);
 	CU_ASSERT(child0->payload_size == 252 * (512 + 8));
 	child1 = TAILQ_NEXT(child0, child_tailq);
 
 	SPDK_CU_ASSERT_FATAL(child1 != NULL);
-	CU_ASSERT(child1->payload.md == NULL);
+	CU_ASSERT(child1->payload.t.sgl.md == NULL);
 	CU_ASSERT(child1->payload_offset == 252 * (512 + 8));
 	CU_ASSERT(child1->payload_size == 4 * (512 + 8));
 
@@ -1001,7 +1001,7 @@ test_nvme_ns_cmd_comparev_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == NULL);
+	CU_ASSERT(g_request->payload.t.sgl.md == NULL);
 	CU_ASSERT(g_request->payload_offset == 0);
 	CU_ASSERT(g_request->payload_size == 256 * 512); /* NOTE: does not include metadata! */
 
@@ -1026,7 +1026,7 @@ test_nvme_ns_cmd_comparev_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.sgl.md == metadata);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
 	nvme_free_request(g_request);
@@ -1205,7 +1205,7 @@ test_nvme_ns_cmd_reservation_register(void)
 
 	CU_ASSERT(g_request->cmd.cdw10 == tmp_cdw10);
 
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 	free(payload);
 	cleanup_after_test(&qpair);
@@ -1243,7 +1243,7 @@ test_nvme_ns_cmd_reservation_release(void)
 
 	CU_ASSERT(g_request->cmd.cdw10 == tmp_cdw10);
 
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 	free(payload);
 	cleanup_after_test(&qpair);
@@ -1281,7 +1281,7 @@ test_nvme_ns_cmd_reservation_acquire(void)
 
 	CU_ASSERT(g_request->cmd.cdw10 == tmp_cdw10);
 
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 	free(payload);
 	cleanup_after_test(&qpair);
@@ -1313,7 +1313,7 @@ test_nvme_ns_cmd_reservation_report(void)
 
 	CU_ASSERT(g_request->cmd.cdw10 == (size >> 2) - 1);
 
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 	free(payload);
 	cleanup_after_test(&qpair);
@@ -1356,7 +1356,7 @@ test_nvme_ns_cmd_write_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.contig.md == metadata);
 	CU_ASSERT(g_request->md_size == 256 * 128);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
@@ -1384,13 +1384,13 @@ test_nvme_ns_cmd_write_with_md(void)
 	child0 = TAILQ_FIRST(&g_request->children);
 
 	SPDK_CU_ASSERT_FATAL(child0 != NULL);
-	CU_ASSERT(child0->payload.md == NULL);
+	CU_ASSERT(child0->payload.t.contig.md == NULL);
 	CU_ASSERT(child0->payload_offset == 0);
 	CU_ASSERT(child0->payload_size == 204 * (512 + 128));
 	child1 = TAILQ_NEXT(child0, child_tailq);
 
 	SPDK_CU_ASSERT_FATAL(child1 != NULL);
-	CU_ASSERT(child1->payload.md == NULL);
+	CU_ASSERT(child1->payload.t.contig.md == NULL);
 	CU_ASSERT(child1->payload_offset == 204 * (512 + 128));
 	CU_ASSERT(child1->payload_size == 52 * (512 + 128));
 
@@ -1444,13 +1444,13 @@ test_nvme_ns_cmd_write_with_md(void)
 	child0 = TAILQ_FIRST(&g_request->children);
 
 	SPDK_CU_ASSERT_FATAL(child0 != NULL);
-	CU_ASSERT(child0->payload.md == NULL);
+	CU_ASSERT(child0->payload.t.contig.md == NULL);
 	CU_ASSERT(child0->payload_offset == 0);
 	CU_ASSERT(child0->payload_size == 252 * (512 + 8));
 	child1 = TAILQ_NEXT(child0, child_tailq);
 
 	SPDK_CU_ASSERT_FATAL(child1 != NULL);
-	CU_ASSERT(child1->payload.md == NULL);
+	CU_ASSERT(child1->payload.t.contig.md == NULL);
 	CU_ASSERT(child1->payload_offset == 252 * (512 + 8));
 	CU_ASSERT(child1->payload_size == 4 * (512 + 8));
 
@@ -1478,7 +1478,7 @@ test_nvme_ns_cmd_write_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == NULL);
+	CU_ASSERT(g_request->payload.t.contig.md == NULL);
 	CU_ASSERT(g_request->payload_offset == 0);
 	CU_ASSERT(g_request->payload_size == 256 * 512); /* NOTE: does not include metadata! */
 
@@ -1503,7 +1503,7 @@ test_nvme_ns_cmd_write_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.contig.md == metadata);
 	CU_ASSERT(g_request->md_size == 256 * 8);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
@@ -1592,7 +1592,7 @@ test_nvme_ns_cmd_zone_append_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.contig.md == metadata);
 	CU_ASSERT(g_request->md_size == 256 * 128);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
@@ -1640,7 +1640,7 @@ test_nvme_ns_cmd_zone_append_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == NULL);
+	CU_ASSERT(g_request->payload.t.contig.md == NULL);
 	CU_ASSERT(g_request->payload_offset == 0);
 	CU_ASSERT(g_request->payload_size == 128 * (512 + 128));
 
@@ -1709,15 +1709,15 @@ test_nvme_ns_cmd_zone_appendv_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.sgl.md == metadata);
 	CU_ASSERT(g_request->md_size == lba_count * md_size);
 	CU_ASSERT(g_request->payload_size == lba_count * sector_size);
 
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_ZONE_APPEND);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 
 	nvme_free_request(g_request);
@@ -1785,7 +1785,7 @@ test_nvme_ns_cmd_read_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.contig.md == metadata);
 	CU_ASSERT(g_request->md_size == 256 * md_size);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
@@ -1832,7 +1832,7 @@ test_nvme_ns_cmd_compare_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.contig.md == metadata);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
 	nvme_free_request(g_request);
@@ -1859,13 +1859,13 @@ test_nvme_ns_cmd_compare_with_md(void)
 	child0 = TAILQ_FIRST(&g_request->children);
 
 	SPDK_CU_ASSERT_FATAL(child0 != NULL);
-	CU_ASSERT(child0->payload.md == NULL);
+	CU_ASSERT(child0->payload.t.contig.md == NULL);
 	CU_ASSERT(child0->payload_offset == 0);
 	CU_ASSERT(child0->payload_size == 204 * (512 + 128));
 	child1 = TAILQ_NEXT(child0, child_tailq);
 
 	SPDK_CU_ASSERT_FATAL(child1 != NULL);
-	CU_ASSERT(child1->payload.md == NULL);
+	CU_ASSERT(child1->payload.t.contig.md == NULL);
 	CU_ASSERT(child1->payload_offset == 204 * (512 + 128));
 	CU_ASSERT(child1->payload_size == 52 * (512 + 128));
 
@@ -1895,13 +1895,13 @@ test_nvme_ns_cmd_compare_with_md(void)
 	child0 = TAILQ_FIRST(&g_request->children);
 
 	SPDK_CU_ASSERT_FATAL(child0 != NULL);
-	CU_ASSERT(child0->payload.md == NULL);
+	CU_ASSERT(child0->payload.t.contig.md == NULL);
 	CU_ASSERT(child0->payload_offset == 0);
 	CU_ASSERT(child0->payload_size == 252 * (512 + 8));
 	child1 = TAILQ_NEXT(child0, child_tailq);
 
 	SPDK_CU_ASSERT_FATAL(child1 != NULL);
-	CU_ASSERT(child1->payload.md == NULL);
+	CU_ASSERT(child1->payload.t.contig.md == NULL);
 	CU_ASSERT(child1->payload_offset == 252 * (512 + 8));
 	CU_ASSERT(child1->payload_size == 4 * (512 + 8));
 
@@ -1929,7 +1929,7 @@ test_nvme_ns_cmd_compare_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == NULL);
+	CU_ASSERT(g_request->payload.t.contig.md == NULL);
 	CU_ASSERT(g_request->payload_offset == 0);
 	CU_ASSERT(g_request->payload_size == 256 * 512); /* NOTE: does not include metadata! */
 
@@ -1954,7 +1954,7 @@ test_nvme_ns_cmd_compare_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->num_children == 0);
 
-	CU_ASSERT(g_request->payload.md == metadata);
+	CU_ASSERT(g_request->payload.t.contig.md == metadata);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 
 	nvme_free_request(g_request);
@@ -2046,10 +2046,10 @@ test_spdk_nvme_ns_cmd_readv_with_md(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_READ);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
-	CU_ASSERT(g_request->payload.md == (void *)0xDEADBEEF);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.md == (void *)0xDEADBEEF);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 	CU_ASSERT(g_request->payload_size == 256 * 512);
 	CU_ASSERT(g_request->qpair == &qpair);
@@ -2117,11 +2117,11 @@ test_spdk_nvme_ns_cmd_writev_ext(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_WRITE);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
-	CU_ASSERT(g_request->payload.md == (void *)0xDEADBEEF);
-	CU_ASSERT(g_request->payload.opts == &ext_opts);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.md == (void *)0xDEADBEEF);
+	CU_ASSERT(NVME_PAYLOAD_GET_OPTS(&g_request->payload) == &ext_opts);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 	CU_ASSERT((g_request->cmd.cdw12 & SPDK_NVME_IO_FLAGS_CDW12_MASK) == ext_opts.io_flags);
 	CU_ASSERT(g_request->cmd.cdw13 == ext_opts.cdw13);
@@ -2188,11 +2188,11 @@ test_spdk_nvme_ns_cmd_readv_ext(void)
 	SPDK_CU_ASSERT_FATAL(g_request != NULL);
 	CU_ASSERT(g_request->cmd.opc == SPDK_NVME_OPC_READ);
 	CU_ASSERT(nvme_payload_type(&g_request->payload) == NVME_PAYLOAD_TYPE_SGL);
-	CU_ASSERT(g_request->payload.reset_sgl_fn == nvme_request_reset_sgl);
-	CU_ASSERT(g_request->payload.next_sge_fn == nvme_request_next_sge);
-	CU_ASSERT(g_request->payload.contig_or_cb_arg == &sge_length);
-	CU_ASSERT(g_request->payload.md == (void *)0xDEADBEEF);
-	CU_ASSERT(g_request->payload.opts == &ext_opts);
+	CU_ASSERT(g_request->payload.t.sgl.reset_sgl_fn == nvme_request_reset_sgl);
+	CU_ASSERT(g_request->payload.t.sgl.next_sge_fn == nvme_request_next_sge);
+	CU_ASSERT(g_request->payload.t.sgl.cb_arg == &sge_length);
+	CU_ASSERT(g_request->payload.t.sgl.md == (void *)0xDEADBEEF);
+	CU_ASSERT(NVME_PAYLOAD_GET_OPTS(&g_request->payload) == &ext_opts);
 	CU_ASSERT(g_request->cmd.nsid == ns.id);
 	CU_ASSERT((g_request->cmd.cdw12 & SPDK_NVME_IO_FLAGS_CDW12_MASK) == ext_opts.io_flags);
 	CU_ASSERT(g_request->cmd.cdw15 >> 16 == ext_opts.apptag_mask);
@@ -2266,7 +2266,7 @@ test_nvme_ns_cmd_io_mgmt_send(void)
 	tmp_cdw10 |= (UT_SIZE_IOMS - 1) << 16;
 
 	CU_ASSERT(g_request->cmd.cdw10 == tmp_cdw10);
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 	cleanup_after_test(&qpair);
 }
@@ -2304,7 +2304,7 @@ test_nvme_ns_cmd_io_mgmt_recv(void)
 	/* number of dwords which is 0-based */
 	CU_ASSERT(g_request->cmd.cdw11 == (size >> 2) - 1);
 
-	spdk_free(g_request->payload.contig_or_cb_arg);
+	spdk_free(g_request->payload.t.contig.buf);
 	nvme_free_request(g_request);
 	free(payload);
 

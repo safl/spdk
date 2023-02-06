@@ -186,9 +186,10 @@ _nvme_ns_cmd_split_request_prp(struct spdk_nvme_ns *ns,
 			       uint32_t io_flags, struct nvme_request *req,
 			       uint16_t apptag_mask, uint16_t apptag, uint32_t cdw13, int *rc)
 {
-	spdk_nvme_req_reset_sgl_cb reset_sgl_fn = req->payload.reset_sgl_fn;
-	spdk_nvme_req_next_sge_cb next_sge_fn = req->payload.next_sge_fn;
-	void *sgl_cb_arg = req->payload.contig_or_cb_arg;
+	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
+	spdk_nvme_req_reset_sgl_cb reset_sgl_fn = req->payload.t.sgl.reset_sgl_fn;
+	spdk_nvme_req_next_sge_cb next_sge_fn = req->payload.t.sgl.next_sge_fn;
+	void *sgl_cb_arg = req->payload.t.sgl.cb_arg;
 	bool start_valid, end_valid, last_sge, child_equals_parent;
 	uint64_t child_lba = lba;
 	uint32_t req_current_length = 0;
@@ -309,9 +310,10 @@ _nvme_ns_cmd_split_request_sgl(struct spdk_nvme_ns *ns,
 			       uint32_t io_flags, struct nvme_request *req,
 			       uint16_t apptag_mask, uint16_t apptag, uint32_t cdw13, int *rc)
 {
-	spdk_nvme_req_reset_sgl_cb reset_sgl_fn = req->payload.reset_sgl_fn;
-	spdk_nvme_req_next_sge_cb next_sge_fn = req->payload.next_sge_fn;
-	void *sgl_cb_arg = req->payload.contig_or_cb_arg;
+	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
+	spdk_nvme_req_reset_sgl_cb reset_sgl_fn = req->payload.t.sgl.reset_sgl_fn;
+	spdk_nvme_req_next_sge_cb next_sge_fn = req->payload.t.sgl.next_sge_fn;
+	void *sgl_cb_arg = req->payload.t.sgl.cb_arg;
 	uint64_t child_lba = lba;
 	uint32_t req_current_length = 0;
 	uint32_t child_length = 0;
@@ -739,8 +741,8 @@ spdk_nvme_ns_cmd_readv_ext(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpai
 			return -EINVAL;
 		}
 
-		payload.opts = opts;
-		payload.md = opts->metadata;
+		NVME_PAYLOAD_SET_OPTS(&payload, opts);
+		payload.t.sgl.md = opts->metadata;
 		req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_READ,
 				      opts->io_flags, opts->apptag_mask, opts->apptag, opts->cdw13, true, &rc);
 
@@ -1034,8 +1036,8 @@ spdk_nvme_ns_cmd_writev_ext(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpa
 			return -EINVAL;
 		}
 
-		payload.opts = opts;
-		payload.md = opts->metadata;
+		NVME_PAYLOAD_SET_OPTS(&payload, opts);
+		payload.t.sgl.md = opts->metadata;
 		req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_WRITE,
 				      opts->io_flags, opts->apptag_mask, opts->apptag, opts->cdw13, true, &rc);
 
