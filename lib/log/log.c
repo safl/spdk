@@ -7,6 +7,18 @@
 
 #include "spdk/log.h"
 
+#define VLOG_RATELIMIT_INTERVAL_DEFAULT     10
+#define VLOG_RATELIMIT_BURST_DEFAULT        5000
+
+struct ratelimit_state {
+	pthread_spinlock_t lock;
+	uint32_t interval;
+	uint32_t burst;
+	uint32_t printed;
+	uint32_t missed;
+	long long int begin;
+};
+
 static const char *const spdk_level_names[] = {
 	[SPDK_LOG_ERROR]	= "ERROR",
 	[SPDK_LOG_WARN]		= "WARNING",
@@ -49,6 +61,116 @@ spdk_log_set_print_level(enum spdk_log_level level)
 enum spdk_log_level
 spdk_log_get_print_level(void) {
 	return g_spdk_log_print_level;
+}
+
+static struct ratelimit_state g_ratelimit;
+
+static long long int
+get_current_system_time(void)
+{
+	long long int usec = 0;
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	usec = ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+
+	return usec;
+}
+
+static void
+__attribute__((constructor)) spdk_log_ratelimit_init(void)
+{
+	pthread_spin_init(&g_ratelimit.lock, PTHREAD_PROCESS_PRIVATE);
+
+	g_ratelimit.interval = VLOG_RATELIMIT_INTERVAL_DEFAULT;
+	g_ratelimit.burst    = VLOG_RATELIMIT_BURST_DEFAULT;
+}
+
+void
+spdk_log_ratelimit_set_interval(uint32_t interval)
+{
+	pthread_spin_lock(&g_ratelimit.lock);
+	SPDK_ERRLOG("-----------set interval----\n");
+
+	g_ratelimit.interval = interval;
+
+	pthread_spin_unlock(&g_ratelimit.lock);
+}
+
+uint32_t
+spdk_log_ratelimit_get_interval(void)
+{
+	return g_ratelimit.interval;
+}
+
+void
+spdk_log_ratelimit_set_burst(uint32_t burst)
+{
+	pthread_spin_lock(&g_ratelimit.lock);
+
+	SPDK_ERRLOG("-----------set burst----\n");
+	g_ratelimit.burst = burst;
+
+	pthread_spin_unlock(&g_ratelimit.lock);
+}
+
+uint32_t
+spdk_log_ratelimit_get_burst(void)
+{
+	return g_ratelimit.burst;
+}
+
+static void get_timestamp_prefix(char *buf, int buf_size);
+
+static bool
+log_print_ratelimit(void)
+{
+	bool ret = false;
+	long long int cur_time;
+	char timestamp[64];
+
+	if (!g_ratelimit.interval) {
+		return false;
+	}
+
+	/*
+	 * If we contend on this state's lock then almost
+	 * by definition we are too busy to print a message,
+	 * in addition to the one that will be printed by
+	 * the entity that is holding the lock already:
+	 */
+	if (pthread_spin_trylock(&g_ratelimit.lock)) {
+		return true;
+	}
+
+	if (!g_ratelimit.begin) {
+		g_ratelimit.begin = get_current_system_time();
+	}
+
+	cur_time = get_current_system_time();
+	if (g_ratelimit.begin + g_ratelimit.interval * 1000000 < cur_time) {
+		if (g_ratelimit.missed) {
+			get_timestamp_prefix(timestamp, sizeof(timestamp));
+			fprintf(stderr, "%s: %d log messages suppressed, %d printed\n", timestamp, g_ratelimit.missed,
+				g_ratelimit.printed);
+			g_ratelimit.missed = 0;
+		}
+
+		g_ratelimit.begin = cur_time;
+		g_ratelimit.printed = 0;
+	}
+
+	if (g_ratelimit.burst && g_ratelimit.burst > g_ratelimit.printed) {
+		g_ratelimit.printed++;
+		ret = true;
+	} else {
+		g_ratelimit.missed++;
+		ret = false;
+	}
+
+	pthread_spin_unlock(&g_ratelimit.lock);
+
+	return ret;
 }
 
 void
@@ -152,6 +274,10 @@ spdk_vlog(enum spdk_log_level level, const char *file, const int line, const cha
 
 	severity = spdk_log_to_syslog_level(level);
 	if (severity < 0) {
+		return;
+	}
+
+	if (!log_print_ratelimit()) {
 		return;
 	}
 

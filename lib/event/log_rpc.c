@@ -16,6 +16,11 @@ struct rpc_log_level {
 	char *level;
 };
 
+struct rpc_log_rate_limit_params {
+	uint32_t interval;
+	uint32_t burst;
+};
+
 static void
 free_rpc_log_flag(struct rpc_log_flag *p)
 {
@@ -34,6 +39,11 @@ static const struct spdk_json_object_decoder rpc_log_flag_decoders[] = {
 
 static const struct spdk_json_object_decoder rpc_log_level_decoders[] = {
 	{"level", offsetof(struct rpc_log_level, level), spdk_json_decode_string},
+};
+
+static const struct spdk_json_object_decoder rpc_log_rate_limit_interval_decoders[] = {
+	{"interval", offsetof(struct rpc_log_rate_limit_params, interval), spdk_json_decode_uint32, true},
+	{"burst", offsetof(struct rpc_log_rate_limit_params, burst), spdk_json_decode_uint32, true},
 };
 
 static int
@@ -303,3 +313,56 @@ rpc_log_enable_timestamps(struct spdk_jsonrpc_request *request,
 }
 SPDK_RPC_REGISTER("log_enable_timestamps", rpc_log_enable_timestamps, SPDK_RPC_RUNTIME)
 SPDK_LOG_REGISTER_COMPONENT(log_rpc)
+
+static void
+rpc_log_set_rate_limit_interval(struct spdk_jsonrpc_request *request,
+				const struct spdk_json_val *params)
+{
+	struct rpc_log_rate_limit_params req = {};
+
+	if (spdk_json_decode_object(params, rpc_log_rate_limit_interval_decoders,
+				    SPDK_COUNTOF(rpc_log_rate_limit_interval_decoders), &req)) {
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
+						 "spdk_json_decode_object failed");
+		return;
+	}
+
+	SPDK_ERRLOG("----------interval %d--------\n", req.interval);
+	spdk_log_ratelimit_set_interval(req.interval);
+	SPDK_ERRLOG("----------burst %d--------\n", req.burst);
+	spdk_log_ratelimit_set_burst(req.burst);
+
+	spdk_jsonrpc_send_bool_response(request, true);
+	return;
+}
+SPDK_RPC_REGISTER("log_set_rate_limit_params", rpc_log_set_rate_limit_interval,
+		  SPDK_RPC_STARTUP | SPDK_RPC_RUNTIME)
+
+static void
+rpc_log_get_rate_limit_params(struct spdk_jsonrpc_request *request,
+			      const struct spdk_json_val *params)
+{
+	struct spdk_json_write_ctx *w;
+	uint32_t interval;
+	uint32_t burst;
+
+	if (params != NULL) {
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+						 "log_get_rate_limit_params requires no parameters");
+		return;
+	}
+
+	w = spdk_jsonrpc_begin_result(request);
+	spdk_json_write_object_begin(w);
+
+	interval = spdk_log_ratelimit_get_interval();
+	spdk_json_write_named_uint32(w, "interval", interval);
+
+	burst = spdk_log_ratelimit_get_burst();
+	spdk_json_write_named_uint32(w, "burst", burst);
+
+	spdk_json_write_object_end(w);
+	spdk_jsonrpc_end_result(request, w);
+}
+SPDK_RPC_REGISTER("log_get_rate_limit_params", rpc_log_get_rate_limit_params,
+		  SPDK_RPC_STARTUP | SPDK_RPC_RUNTIME)

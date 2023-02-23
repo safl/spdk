@@ -11973,3 +11973,74 @@ Example response:
   }
 ]
 ~~~
+
+### log_get_rate_limit_params
+
+Get log rate limit params value
+
+#### Parameters
+
+This method has no parameters.
+
+#### Response
+
+Log rate limit interval value.
+
+#### Example
+
+Example request:
+~~
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "log_get_rate_limit_interval"
+}
+~~
+
+Example response:
+
+~~~json
+[
+  {
+    "interval": 10,
+    "burst": 5000
+  }
+]
+~~~
+
+### log_set_rate_limit_params
+
+Set the current log rate limit params value
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+interval                | Required | number      | log rate limit interval. The unit is second. 0 for disable. Default: 10
+burst                   | Required | number      | log rate limit burst. Default: 5000
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "method": "log_set_rate_limit_interval",
+  "id": 1,
+  "params": {
+    "interval": "10",
+    "burst": "5000"
+  }
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~

@@ -2,6 +2,11 @@
 
 ## v23.05: (Upcoming Release)
 
+### log
+
+new RPCs`log_set_rate_limit_params` was added to set limit log entries params, `log_set_rate_limit_params`
+was added to get limit log entries params.
+
 ### accel
 
 Added API `spdk_accel_submit_xor` to perform XOR.

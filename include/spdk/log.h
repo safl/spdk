@@ -19,6 +19,11 @@
 extern "C" {
 #endif
 
+void spdk_log_ratelimit_set_interval(uint32_t interval);
+uint32_t spdk_log_ratelimit_get_interval(void);
+void spdk_log_ratelimit_set_burst(uint32_t burst);
+uint32_t spdk_log_ratelimit_get_burst(void);
+
 /**
  * for passing user-provided log call
  *

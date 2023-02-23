@@ -1896,6 +1896,23 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p = subparsers.add_parser('log_get_print_level', help='get log print level')
     p.set_defaults(func=log_get_print_level)
 
+    def log_set_rate_limit_params(args):
+        rpc.log.log_set_rate_limit_params(args.client,
+                                          interval=args.interval,
+                                          burst=args.burst)
+
+    p = subparsers.add_parser('log_set_rate_limit_params', help='set log rate limit params')
+    p.add_argument('--interval', help='log rate limit params. The unit is second. 0 for disable. Default: 10',
+                   type=int, default=10)
+    p.add_argument('--burst', help='log rate limit params. Default: 5000', type=int, default=5000)
+    p.set_defaults(func=log_set_rate_limit_params)
+
+    def log_get_rate_limit_params(args):
+        print_dict(rpc.log.log_get_rate_limit_params(args.client))
+
+    p = subparsers.add_parser('log_get_rate_limit_params', help='get log rate limit params value')
+    p.set_defaults(func=log_get_rate_limit_params)
+
     # lvol
     def bdev_lvol_create_lvstore(args):
         print_json(rpc.lvol.bdev_lvol_create_lvstore(args.client,
