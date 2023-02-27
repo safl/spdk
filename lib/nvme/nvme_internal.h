@@ -247,6 +247,14 @@ struct nvme_payload {
 			/** Virtual memory address of a single virtually contiguous metadata buffer */
 			void *md;
 		} contig;
+
+		struct {
+			/**
+			 * Functions to report the returned data
+			 */
+			spdk_nvme_req_next_segment_cb next_fn;
+			void *cb_arg;
+		} zcopy;
 	} t;
 };
 
@@ -277,9 +285,11 @@ SPDK_STATIC_ASSERT(sizeof(void *) == 8, "Only 64 bit architectures are supported
 		.t.sgl.md = (md_), \
 	}
 
-#define NVME_PAYLOAD_ZCOPY() \
+#define NVME_PAYLOAD_ZCOPY(next_fn_, cb_arg_) \
 	(struct nvme_payload) { \
 		.opts = (struct spdk_nvme_ns_cmd_ext_io_opts *)((uint64_t)NVME_PAYLOAD_TYPE_ZCOPY << 62), \
+		.t.zcopy.next_fn = (next_fn_), \
+		.t.zcopy.cb_arg = (cb_arg_), \
 	}
 
 static inline enum nvme_payload_type
@@ -514,6 +524,7 @@ struct spdk_nvme_poll_group {
 	void						*ctx;
 	struct spdk_nvme_accel_fn_table			accel_fn_table;
 	STAILQ_HEAD(, spdk_nvme_transport_poll_group)	tgroups;
+	SLIST_HEAD(, spdk_nvme_buf_token)		tokens;
 };
 
 struct spdk_nvme_transport_poll_group {
@@ -1600,5 +1611,11 @@ _is_page_aligned(uint64_t address, uint64_t page_size)
 {
 	return (address & (page_size - 1)) == 0;
 }
+
+/**
+ * Get a user-provided buffer from the poll group
+ *
+ */
+struct spdk_nvme_buf_token *nvme_poll_group_get_buf(struct spdk_nvme_poll_group *group);
 
 #endif /* __NVME_INTERNAL_H__ */

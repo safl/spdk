@@ -763,6 +763,36 @@ spdk_nvme_ns_cmd_readv_ext(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpai
 }
 
 int
+spdk_nvme_ns_cmd_read_zcopy(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
+			    uint64_t lba, uint32_t lba_count,
+			    spdk_nvme_req_next_segment_cb buf_cb_fn,
+			    spdk_nvme_cmd_cb cb_fn, void *cb_arg)
+{
+	struct nvme_request *req;
+	struct nvme_payload payload;
+	int rc = 0;
+
+	if (buf_cb_fn == NULL || cb_fn == NULL) {
+		return -EINVAL;
+	}
+
+	payload = NVME_PAYLOAD_ZCOPY(buf_cb_fn, cb_arg);
+
+	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_READ,
+			      0, 0, 0, 0, true, &rc);
+
+	if (req != NULL) {
+		return nvme_qpair_submit_request(qpair, req);
+	} else {
+		return nvme_ns_map_failure_rc(lba_count,
+					      ns->sectors_per_max_io,
+					      ns->sectors_per_stripe,
+					      qpair->ctrlr->opts.io_queue_requests,
+					      rc);
+	}
+}
+
+int
 spdk_nvme_ns_cmd_write(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 		       void *buffer, uint64_t lba,
 		       uint32_t lba_count, spdk_nvme_cmd_cb cb_fn, void *cb_arg,

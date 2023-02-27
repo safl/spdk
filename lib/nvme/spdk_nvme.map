@@ -125,6 +125,8 @@
 	spdk_nvme_poll_group_process_completions;
 	spdk_nvme_poll_group_all_connected;
 	spdk_nvme_poll_group_get_ctx;
+	spdk_nvme_poll_group_provide_buf;
+	spdk_nvme_buf_token_release;
 
 	spdk_nvme_ns_get_data;
 	spdk_nvme_ns_get_id;
@@ -159,6 +161,7 @@
 	spdk_nvme_ns_cmd_readv;
 	spdk_nvme_ns_cmd_readv_with_md;
 	spdk_nvme_ns_cmd_read_with_md;
+	spdk_nvme_ns_cmd_read_zcopy;
 	spdk_nvme_ns_cmd_dataset_management;
 	spdk_nvme_ns_cmd_copy;
 	spdk_nvme_ns_cmd_flush;

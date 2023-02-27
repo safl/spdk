@@ -109,6 +109,8 @@ function confirm_abi_deps() {
 	name = nvme_payload
 [suppress_type]
 	name = nvme_request
+[suppress_type]
+	name = spdk_nvme_poll_group
 EOF
 
 	for object in "$libdir"/libspdk_*.so; do

@@ -34,6 +34,7 @@ spdk_nvme_poll_group_create(void *ctx, struct spdk_nvme_accel_fn_table *table)
 
 	group->ctx = ctx;
 	STAILQ_INIT(&group->tgroups);
+	SLIST_INIT(&group->tokens);
 
 	return group;
 }
@@ -180,6 +181,7 @@ int
 spdk_nvme_poll_group_destroy(struct spdk_nvme_poll_group *group)
 {
 	struct spdk_nvme_transport_poll_group *tgroup, *tmp_tgroup;
+	struct spdk_nvme_buf_token *token;
 
 	STAILQ_FOREACH_SAFE(tgroup, &group->tgroups, link, tmp_tgroup) {
 		STAILQ_REMOVE(&group->tgroups, tgroup, spdk_nvme_transport_poll_group, link);
@@ -188,6 +190,16 @@ spdk_nvme_poll_group_destroy(struct spdk_nvme_poll_group *group)
 			return -EBUSY;
 		}
 
+	}
+
+	while (!SLIST_EMPTY(&group->tokens)) {
+		token = SLIST_FIRST(&group->tokens);
+		SLIST_REMOVE_HEAD(&group->tokens, link);
+		if (token->refcnt != 1) {
+			SPDK_ERRLOG("Destroyed poll group while token %p still has refcnt %u\n", token, token->refcnt);
+			assert(false);
+		}
+		spdk_nvme_buf_token_release(group, token);
 	}
 
 	free(group);
@@ -271,4 +283,63 @@ spdk_nvme_poll_group_free_stats(struct spdk_nvme_poll_group *group,
 
 	free(stat->transport_stat);
 	free(stat);
+}
+
+int
+spdk_nvme_poll_group_provide_buf(struct spdk_nvme_poll_group *group,
+				 struct spdk_nvme_buf_token *token)
+{
+	if (token->buf == NULL) {
+		return -EINVAL;
+	}
+
+	if (token->len == 0) {
+		return -EINVAL;
+	}
+
+	if (token->released_cb == NULL) {
+		return -EINVAL;
+	}
+
+	if (token->refcnt != 0) {
+		return -EINVAL;
+	}
+
+	if (STAILQ_EMPTY(&group->tgroups)) {
+		/* This is to catch buffers being provided
+		 * while the poll group is being destroyed. */
+		return -ENOTSUP;
+	}
+
+	token->refcnt = 1;
+	SLIST_INSERT_HEAD(&group->tokens, token, link);
+
+	return 0;
+}
+
+void
+spdk_nvme_buf_token_release(struct spdk_nvme_poll_group *group, struct spdk_nvme_buf_token *token)
+{
+	assert(token->refcnt > 0);
+
+	token->refcnt--;
+	if (token->refcnt == 0) {
+		token->released_cb(group, token);
+	}
+}
+
+struct spdk_nvme_buf_token *
+nvme_poll_group_get_buf(struct spdk_nvme_poll_group *group)
+{
+	struct spdk_nvme_buf_token *token;
+
+	token = SLIST_FIRST(&group->tokens);
+	if (token) {
+		/* We leave the refcnt as 1 here - the caller of this function
+		 * now owns that reference. */
+		assert(token->refcnt == 1);
+		SLIST_REMOVE_HEAD(&group->tokens, link);
+	}
+
+	return token;
 }

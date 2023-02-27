@@ -3426,6 +3426,113 @@ int spdk_nvme_ns_cmd_read_with_md(struct spdk_nvme_ns *ns, struct spdk_nvme_qpai
 				  void *cb_arg, uint32_t io_flags,
 				  uint16_t apptag_mask, uint16_t apptag);
 
+struct spdk_nvme_buf_token;
+
+/**
+ * When a previously provided buffer has no remaining references this callback is called to
+ * provide notification that the buffer is released. Software can decide to provide the buffer
+ * again or remove it from the pool
+ */
+typedef void (*spdk_nvme_buf_released)(struct spdk_nvme_poll_group *group,
+				       struct spdk_nvme_buf_token *token);
+
+/**
+ * A token that holds a reference count to a provided buffer (from
+ * spdk_nvme_poll_group_provide_buf). All tokens must be returned using
+ * spdk_nvme_buf_token_release.
+ *
+ */
+struct spdk_nvme_buf_token {
+	void					*buf;
+	size_t					len;
+	uint32_t				refcnt;
+	spdk_nvme_buf_released			released_cb;
+	SLIST_ENTRY(spdk_nvme_buf_token)	link;
+};
+
+/**
+ * Provide a buffer to a poll group.
+ *
+ * The caller of this API must fill out the token struct with a buffer, a length,
+ * a release_cb, and set the refcnt to 0. This buffer will be used as the destination buffer
+ * in later calls to spdk_nvme_ns_cmd_read_zcopy().
+ *
+ * Providing a buffer sets the ref count on the token to one. If the buffer is later used
+ * as part of an I/O, each call to spdk_nvme_req_next_segment_cb also increases the reference count
+ * on the token by 1. The internal refcnt cannot be released by calling spdk_nvme_buf_token_release
+ * and is only released when the buffer has been filled with data or the poll group is closed.
+ *
+ * To reclaim this buffer, for each reference count call spdk_nvme_buf_token_release(). When
+ * the reference drops to 0, released_cb will be called.
+ *
+ * When deciding how many buffers to provide, follow these recommendations:
+ *  - Provide at least 2 buffers, but preferably a big pool.
+ *  - Provide at least enough total memory to hold (2 * Maximum I/O Size) worth of data.
+ *  - Smaller buffers allow memory to be released sooner. This can help avoid ENOBUFS
+ *    error codes when the system gets many small partial receives.
+ *    8KiB or 16KiB are good choices.
+ *  - Prefer providing data buffers that are all the same size.
+ *  - Always be prepared to handle ENOBUFS. The amount of memory required to ensure it
+ *    never occurs is too large.
+ *
+ * @param group The poll group
+ * @param token The token that will track the buffer usage
+ *
+ * @return 0 on success. -EINVAL on failure.
+ */
+int spdk_nvme_poll_group_provide_buf(struct spdk_nvme_poll_group *group,
+				     struct spdk_nvme_buf_token *token);
+
+/**
+ * Release a token.
+ *
+ * If releasing this token releases the last reference to a previously provided buffer,
+ * the released_cb will be called.
+ *
+ * @param group The poll group
+ * @param token The token to release
+ */
+void spdk_nvme_buf_token_release(struct spdk_nvme_poll_group *group,
+				 struct spdk_nvme_buf_token *token);
+
+/**
+ * When an spdk_nvme_ns_read_zcopy completes, this function is called N times to report back
+ * the location of the data (which may be scattered).
+ *
+ * The token must be released by calling spdk_nvme_buf_token_release() when the buffer pointed
+ * to by address is no longer in use.
+ */
+typedef void (*spdk_nvme_req_next_segment_cb)(void *cb_arg, struct spdk_nvme_buf_token *token,
+		void *address, int length);
+
+/**
+ * Perform a read to the given namespace using previously provided data buffers.
+ *
+ * See spdk_nvme_poll_group_provide_buf() for details. The qpair MUST be in a poll group
+ * or this will fail.
+ *
+ * This approach can both avoid data copies and reduce the working set for some transports,
+ * especially for TCP.
+ *
+ * If there is data to be read but not enough buffers have been provided,
+ * spdk_nvme_poll_group_process_completions() may return -ENOBUFS. This error code should be
+ * handled by providing more data buffers via spdk_nvme_poll_group_provide_buf().
+ *
+ * @param ns The namespace to read from
+ * @param qpair The queue pair to use for this request
+ * @param lba The LBA to read from
+ * @param lba_count The number of LBAs to read
+ * @param buf_cb_fn Called for each segment of data read in this request
+ * \param cb_fn Callback function to invoke when the I/O is completed.
+ * \param cb_arg Argument to pass to the callback functions.
+ *
+ * @return 0 on success. Negated errno on failure.
+ */
+int spdk_nvme_ns_cmd_read_zcopy(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
+				uint64_t lba, uint32_t lba_count,
+				spdk_nvme_req_next_segment_cb buf_cb_fn,
+				spdk_nvme_cmd_cb cb_fn, void *cb_arg);
+
 /**
  * Submit a data set management request to the specified NVMe namespace.
  *
