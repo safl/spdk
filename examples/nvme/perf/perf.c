@@ -30,6 +30,8 @@
 #include <liburing.h>
 #endif
 
+#define URING_POSTED_BUFFER_SIZE 0x4000
+
 #if HAVE_LIBAIO
 #include <libaio.h>
 #endif
@@ -136,6 +138,8 @@ struct ns_worker_ctx {
 			struct spdk_nvme_qpair		**qpair;
 			struct spdk_nvme_poll_group	*group;
 			int				last_qpair;
+			int				buf_count;
+			struct spdk_nvme_buf_token	*tokens;
 		} nvme;
 
 #ifdef SPDK_CONFIG_URING
@@ -985,6 +989,15 @@ nvme_verify_io(struct perf_task *task, struct ns_entry *entry)
 	}
 }
 
+static void
+nvme_buf_released(struct spdk_nvme_poll_group *group,
+		  struct spdk_nvme_buf_token *token)
+{
+	if (spdk_nvme_poll_group_provide_buf(group, token)) {
+		printf("Failed to re-post buffer to group\n");
+	}
+}
+
 /*
  * TODO: If a controller has multiple namespaces, they could all use the same queue.
  *  For now, give each namespace/thread combination its own queue.
@@ -994,10 +1007,12 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 {
 	struct spdk_nvme_io_qpair_opts opts;
 	struct ns_entry *entry = ns_ctx->entry;
+	const struct spdk_nvme_transport_id *trid;
 	struct spdk_nvme_poll_group *group;
 	struct spdk_nvme_qpair *qpair;
 	uint64_t poll_timeout_tsc;
 	int i, rc;
+	int buf_count = 0;
 
 	ns_ctx->u.nvme.num_active_qpairs = g_nr_io_queues_per_ns;
 	ns_ctx->u.nvme.num_all_qpairs = g_nr_io_queues_per_ns + g_nr_unused_io_queues;
@@ -1042,6 +1057,45 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 		}
 	}
 
+	trid = spdk_nvme_ctrlr_get_transport_id(entry->u.nvme.ctrlr);
+
+	/* If the test uses the TCP transport, allocate and post some buffers to the group */
+	if (trid->trtype == SPDK_NVME_TRANSPORT_TCP) {
+		uint64_t total_data_in_flight;
+
+		/* We calculate the maximum amount of data in flight, divide by the size of
+		 * buffer we want to post, then add an extra one for each queue pair to account
+		 * for protocol overhead. */
+		total_data_in_flight = entry->num_io_requests * g_io_size_bytes;
+		buf_count = SPDK_CEIL_DIV(total_data_in_flight, URING_POSTED_BUFFER_SIZE);
+		buf_count = spdk_max(buf_count, 3);
+
+		ns_ctx->u.nvme.tokens = calloc(buf_count, sizeof(struct spdk_nvme_buf_token));
+		if (ns_ctx->u.nvme.tokens == NULL) {
+			printf("ERROR: unable to allocate tokens\n");
+			buf_count = 0;
+			goto qpair_failed;
+		}
+		ns_ctx->u.nvme.buf_count = buf_count;
+
+		for (i = 0; i < buf_count; i++) {
+			struct spdk_nvme_buf_token *token = &ns_ctx->u.nvme.tokens[i];
+
+			token->buf = spdk_zmalloc(URING_POSTED_BUFFER_SIZE, 0x1000, NULL, SPDK_ENV_SOCKET_ID_ANY,
+						  SPDK_MALLOC_DMA);
+			if (token->buf == NULL) {
+				printf("ERROR: unable to allocate buffer for group pool\n");
+				goto qpair_failed;
+			}
+			token->len = URING_POSTED_BUFFER_SIZE;
+			token->released_cb = nvme_buf_released;
+			if (spdk_nvme_poll_group_provide_buf(ns_ctx->u.nvme.group, &ns_ctx->u.nvme.tokens[i])) {
+				printf("ERROR: unable to provide buffer to poll group\n");
+				goto qpair_failed;
+			}
+		}
+	}
+
 	/* Busy poll here until all qpairs are connected - this ensures once we start
 	 * I/O we aren't still waiting for some qpairs to connect. Limit the poll to
 	 * 10 seconds though.
@@ -1067,6 +1121,11 @@ qpair_failed:
 	spdk_nvme_poll_group_destroy(ns_ctx->u.nvme.group);
 poll_group_failed:
 	free(ns_ctx->u.nvme.qpair);
+
+	for (i = 0; i < buf_count; i++) {
+		spdk_free(ns_ctx->u.nvme.tokens[i].buf);
+	}
+	free(ns_ctx->u.nvme.tokens);
 	return -1;
 }
 
@@ -1080,6 +1139,14 @@ nvme_cleanup_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	}
 
 	spdk_nvme_poll_group_destroy(ns_ctx->u.nvme.group);
+
+	if (ns_ctx->u.nvme.tokens) {
+		for (i = 0; i < ns_ctx->u.nvme.buf_count; i++) {
+			spdk_free(ns_ctx->u.nvme.tokens[i].buf);
+		}
+		free(ns_ctx->u.nvme.tokens);
+	}
+
 	free(ns_ctx->u.nvme.qpair);
 }
 
