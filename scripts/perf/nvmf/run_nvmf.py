@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import zipfile
+import tarfile
 import threading
 import subprocess
 import itertools
@@ -633,15 +634,17 @@ class Target(Server):
     def measure_sar(self, results_dir, sar_file_prefix, ramp_time, run_time):
         cpu_number = os.cpu_count()
         sar_idle_sum = 0
-        sar_output_file = os.path.join(results_dir, sar_file_prefix + ".txt")
-        sar_cpu_util_file = os.path.join(results_dir, ".".join([sar_file_prefix + "cpu_util", "txt"]))
+        sar_files_dir = os.path.join(results_dir, "sar_output")
+        sar_output_file = os.path.join(sar_files_dir, sar_file_prefix + ".txt")
+        sar_cpu_util_file = os.path.join(sar_files_dir, ".".join([sar_file_prefix + "cpu_util", "txt"]))
 
         self.log.info("Waiting %d seconds for ramp-up to finish before measuring SAR stats" % ramp_time)
         time.sleep(ramp_time)
         self.log.info("Starting SAR measurements")
 
+        self.exec_cmd(["mkdir", "-p", "%s" % sar_files_dir])
         out = self.exec_cmd(["sar", "-P", "ALL", "%s" % 1, "%s" % run_time])
-        with open(os.path.join(results_dir, sar_output_file), "w") as fh:
+        with open(os.path.join(sar_files_dir, sar_output_file), "w") as fh:
             for line in out.split("\n"):
                 if "Average" in line:
                     if "CPU" in line:
@@ -654,58 +657,70 @@ class Target(Server):
             fh.write(out)
         sar_cpu_usage = cpu_number * 100 - sar_idle_sum
 
-        with open(os.path.join(results_dir, sar_cpu_util_file), "w") as f:
+        with open(os.path.join(sar_files_dir, sar_cpu_util_file), "w") as f:
             f.write("%0.2f" % sar_cpu_usage)
 
     def measure_power(self, results_dir, prefix, script_full_dir, ramp_time, run_time):
+        pm_files_dir = os.path.join(results_dir, "pm_output")
+
         time.sleep(ramp_time)
         self.log.info("Starting power measurements")
         self.exec_cmd(["%s/../pm/collect-bmc-pm" % script_full_dir,
-                      "-d", "%s" % results_dir, "-l", "-p", "%s" % prefix,
+                      "-d", "%s" % pm_files_dir, "-l", "-p", "%s" % prefix,
                        "-x", "-c", "%s" % run_time, "-t", "%s" % 1, "-r"])
 
     def measure_pcm_memory(self, results_dir, pcm_file_name, ramp_time, run_time):
+        pcm_files_dir = os.path.join(results_dir, "pcm_output")
         time.sleep(ramp_time)
-        cmd = ["pcm-memory", "1", "-csv=%s/%s" % (results_dir, pcm_file_name)]
+        self.exec_cmd(["mkdir", "-p", "%s" % pcm_files_dir])
+        cmd = ["pcm-memory", "1", "-csv=%s/%s" % (pcm_files_dir, pcm_file_name)]
         pcm_memory = subprocess.Popen(cmd)
         time.sleep(run_time)
         pcm_memory.terminate()
 
     def measure_pcm(self, results_dir, pcm_file_name, ramp_time, run_time):
+        pcm_files_dir = os.path.join(results_dir, "pcm_output")
         time.sleep(ramp_time)
+        self.exec_cmd(["mkdir", "-p", "%s" % pcm_files_dir])
         cmd = ["pcm", "1", "-i=%s" % run_time,
-               "-csv=%s/%s" % (results_dir, pcm_file_name)]
+               "-csv=%s/%s" % (pcm_files_dir, pcm_file_name)]
         subprocess.run(cmd)
-        df = pd.read_csv(os.path.join(results_dir, pcm_file_name), header=[0, 1])
+        df = pd.read_csv(os.path.join(pcm_files_dir, pcm_file_name), header=[0, 1])
         df = df.rename(columns=lambda x: re.sub(r'Unnamed:[\w\s]*$', '', x))
         skt = df.loc[:, df.columns.get_level_values(1).isin({'UPI0', 'UPI1', 'UPI2'})]
         skt_pcm_file_name = "_".join(["skt", pcm_file_name])
-        skt.to_csv(os.path.join(results_dir, skt_pcm_file_name), index=False)
+        skt.to_csv(os.path.join(pcm_files_dir, skt_pcm_file_name), index=False)
 
     def measure_pcm_power(self, results_dir, pcm_power_file_name, ramp_time, run_time):
+        pcm_files_dir = os.path.join(results_dir, "pcm_output")
         time.sleep(ramp_time)
+        self.exec_cmd(["mkdir", "-p", "%s" % pcm_files_dir])
         out = self.exec_cmd(["pcm-power", "1", "-i=%s" % run_time])
-        with open(os.path.join(results_dir, pcm_power_file_name), "w") as fh:
+        with open(os.path.join(pcm_files_dir, pcm_power_file_name), "w") as fh:
             fh.write(out)
         # TODO: Above command results in a .csv file containing measurements for all gathered samples.
         #       Improve this so that additional file containing measurements average is generated too.
 
     def measure_network_bandwidth(self, results_dir, bandwidth_file_name, ramp_time, run_time):
+        bmw_files_dir = os.path.join(results_dir, "bwm_output")
         self.log.info("Waiting %d seconds for ramp-up to finish before measuring bandwidth stats" % ramp_time)
         time.sleep(ramp_time)
         self.log.info("INFO: starting network bandwidth measure")
-        self.exec_cmd(["bwm-ng", "-o", "csv", "-F", "%s/%s" % (results_dir, bandwidth_file_name),
+        self.exec_cmd(["mkdir", "-p", "%s" % bmw_files_dir])
+        self.exec_cmd(["bwm-ng", "-o", "csv", "-F", "%s/%s" % (bmw_files_dir, bandwidth_file_name),
                        "-a", "1", "-t", "1000", "-c", "%s" % run_time])
         # TODO: Above command results in a .csv file containing measurements for all gathered samples.
         #       Improve this so that additional file containing measurements average is generated too.
         # TODO: Monitor only these interfaces which are currently used to run the workload.
 
     def measure_dpdk_memory(self, results_dir, dump_file_name, ramp_time):
+        dpdk_mem_files_dir = os.path.join(results_dir, "dpdk_output")
         self.log.info("INFO: waiting to generate DPDK memory usage")
         time.sleep(ramp_time)
         self.log.info("INFO: generating DPDK memory usage")
+        self.exec_cmd(["mkdir", "-p", "%s" % dpdk_mem_files_dir])
         tmp_dump_file = rpc.env_dpdk.env_dpdk_get_mem_stats(self.client)["filename"]
-        os.rename(tmp_dump_file, "%s/%s" % (results_dir, dump_file_name))
+        os.rename(tmp_dump_file, "%s/%s" % (dpdk_mem_files_dir, dump_file_name))
 
     def sys_config(self):
         self.log.info("====Kernel release:====")
@@ -744,6 +759,8 @@ class Initiator(Server):
         ]
 
         self.read_config(config_fields, initiator_config)
+        self.fio_configs_dir = os.path.join(self.spdk_dir, "nvmf_perf", "fio_configs")
+        self.fio_json_out_dir = os.path.join(self.spdk_dir, "nvmf_perf", "fio_json_output")
 
         if os.getenv('SPDK_WORKSPACE'):
             self.spdk_dir = os.getenv('SPDK_WORKSPACE')
@@ -815,17 +832,26 @@ class Initiator(Server):
         self.log.info("Sources unpacked")
 
     def copy_result_files(self, dest_dir):
-        self.log.info("Copying results")
+        tar_name = "nvmf_perf.tar.gz"
+        src_tar_path = os.path.join(os.path.join(self.spdk_dir, "nvmf_perf"))
+        dst_tar_path = os.path.join(os.path.join(dest_dir, tar_name))
 
+        self.log.info("Copying results")
         if not os.path.exists(dest_dir):
             os.mkdir(dest_dir)
 
-        # Get list of result files from initiator and copy them back to target
-        file_list = self.exec_cmd(["ls", "%s/nvmf_perf" % self.spdk_dir]).strip().split("\n")
+        self.exec_cmd(["tar", "-czf", tar_name, "-C", src_tar_path, "."])
+        self.get_file(tar_name, dst_tar_path)
+        self.exec_cmd(["rm", "-f", tar_name])
 
-        for file in file_list:
-            self.get_file(os.path.join(self.spdk_dir, "nvmf_perf", file),
-                          os.path.join(dest_dir, file))
+        try:
+            tar_file = tarfile.open(dst_tar_path)
+            tar_file.extractall(dest_dir)
+            tar_file.close()
+            os.remove(dst_tar_path)
+        except Exception as err:
+            self.log.error("Failed to extract result files")
+            self.log.error(err)
         self.log.info("Done copying results")
 
     def match_subsystems(self, target_subsytems):
@@ -965,12 +991,12 @@ registerfiles=1
             fio_config_filename += "_%sCPU" % self.num_cores
         fio_config_filename += ".fio"
 
-        self.exec_cmd(["mkdir", "-p", "%s/nvmf_perf" % self.spdk_dir])
-        self.exec_cmd(["echo", "'%s'" % fio_config, ">", "%s/nvmf_perf/%s" % (self.spdk_dir, fio_config_filename)])
+        self.exec_cmd(["mkdir", "-p", self.fio_configs_dir])
+        self.exec_cmd(["echo", "'%s'" % fio_config, ">", "%s/%s" % (self.fio_configs_dir, fio_config_filename)])
         self.log.info("Created FIO Config:")
         self.log.info(fio_config)
 
-        return os.path.join(self.spdk_dir, "nvmf_perf", fio_config_filename)
+        return os.path.join(fio_config_filename)
 
     def set_cpu_frequency(self):
         if self.cpu_frequency is not None:
@@ -984,17 +1010,21 @@ registerfiles=1
         else:
             self.log.warning("WARNING: you have disabled intel_pstate and using default cpu governance.")
 
-    def run_fio(self, fio_config_file, run_num=1):
-        job_name, _ = os.path.splitext(fio_config_file)
-        self.log.info("Starting FIO run for job: %s" % job_name)
+    def run_fio(self, fio_config_filename, run_num=1):
+        job_name, _ = os.path.splitext(fio_config_filename)
+        output_filename = job_name + "_run_" + str(run_num) + "_" + self.name + ".json"
+        fio_config_path = os.path.join(self.fio_configs_dir, fio_config_filename)
+        fio_output_path = os.path.join(self.fio_json_out_dir, output_filename)
+
+        self.log.info("Starting FIO run for job: %s" % fio_config_path)
         self.log.info("Using FIO: %s" % self.fio_bin)
 
-        output_filename = job_name + "_run_" + str(run_num) + "_" + self.name + ".json"
         try:
-            output = self.exec_cmd(["sudo", self.fio_bin, fio_config_file, "--output-format=json",
-                                    "--output=%s" % output_filename, "--eta=never"], True)
+            self.exec_cmd(["mkdir", "-p", self.fio_json_out_dir])
+            output = self.exec_cmd(["sudo", self.fio_bin, fio_config_path, "--output-format=json",
+                                    "--output=%s" % fio_output_path, "--eta=never"], True)
             self.log.info(output)
-            self.log.info("FIO run finished. Results in: %s" % output_filename)
+            self.log.info("FIO run finished. Results in: %s" % fio_output_path)
         except subprocess.CalledProcessError as e:
             self.log.error("ERROR: Fio process failed!")
             self.log.error(e.stdout)

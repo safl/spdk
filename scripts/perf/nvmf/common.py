@@ -96,11 +96,13 @@ def read_target_stats(measurement_name, results_file_list, results_dir):
 
 
 def parse_results(results_dir, csv_file):
-    files = os.listdir(results_dir)
-    fio_files = filter(lambda x: ".fio" in x, files)
-    json_files = [x for x in files if ".json" in x]
-    sar_files = [x for x in files if "sar" in x and "util" in x]
-    pm_files = [x for x in files if "pm" in x and "avg" in x]
+    fio_files = os.listdir(os.path.join(results_dir, "fio_configs"))
+    json_files_dir = os.path.join(results_dir, "fio_json_output")
+    sar_files_dir = os.path.join(results_dir, "sar_output")
+    pm_files_dir = os.path.join(results_dir, "pm_output")
+    json_files = os.listdir(json_files_dir)
+    sar_files = [x for x in os.listdir(sar_files_dir) if "sar" in x and "util" in x] if os.path.exists(sar_files_dir) else []
+    pm_files = [x for x in os.listdir(pm_files_dir) if "pm" in x and "avg" in x] if os.path.exists(pm_files_dir) else []
 
     headers = ["read_iops", "read_bw", "read_avg_lat_us", "read_min_lat_us", "read_max_lat_us",
                "read_p99_lat_us", "read_p99.9_lat_us", "read_p99.99_lat_us", "read_p99.999_lat_us",
@@ -166,7 +168,7 @@ def parse_results(results_dir, csv_file):
             separate_stats = []
             for r in i_results:
                 try:
-                    stats = read_json_stats(os.path.join(results_dir, r))
+                    stats = read_json_stats(os.path.join(json_files_dir, r))
                     separate_stats.append(stats)
                     logging.info(stats)
                 except JSONDecodeError:
@@ -203,11 +205,11 @@ def parse_results(results_dir, csv_file):
 
         if sar_result_files:
             aggr_headers.append("target_avg_cpu_util")
-            aggregate_results.update(read_target_stats("target_avg_cpu_util", sar_result_files, results_dir))
+            aggregate_results.update(read_target_stats("target_avg_cpu_util", sar_result_files, sar_files_dir))
 
         if pm_result_files:
             aggr_headers.append("target_avg_power")
-            aggregate_results.update(read_target_stats("target_avg_power", pm_result_files, results_dir))
+            aggregate_results.update(read_target_stats("target_avg_power", pm_result_files, pm_files_dir))
 
         rows.add(",".join([job_name, *aggregate_results.values()]))
 
