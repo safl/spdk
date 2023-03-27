@@ -5,7 +5,10 @@
 import os
 import re
 import json
+import shutil
 import logging
+import tarfile
+from tarfile import TarError
 from subprocess import check_output
 from collections import OrderedDict
 from json.decoder import JSONDecodeError
@@ -223,3 +226,19 @@ def parse_results(results_dir, csv_file):
         with open(os.path.join(results_dir, csv_file), "a") as fh:
             fh.write(row + "\n")
     logging.info("You can find the test results in the file %s" % os.path.join(results_dir, csv_file))
+
+
+def tar_results(results_dir):
+    logs_to_tar = ["bwm_output", "dpdk_output", "pcm_output"]
+    for log in logs_to_tar:
+        try:
+            logs_path = os.path.join(results_dir, log)
+            tar_filename = ".".join([log, "tar.gz"])
+            with tarfile.open(os.path.join(results_dir, tar_filename), "w:gz") as tar:
+                tar.add(logs_path, arcname=log)
+            shutil.rmtree(logs_path)
+        except TarError as err:
+            logging.error(f"Failed to tar {log} artifacts.")
+            logging.error(err)
+        except FileNotFoundError:
+            logging.warning(f"{log} directory does not exist, skipping compression.")

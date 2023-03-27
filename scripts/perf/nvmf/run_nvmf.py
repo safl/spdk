@@ -1850,6 +1850,7 @@ if __name__ == "__main__":
                 i.copy_result_files(args.results)
         try:
             parse_results(args.results, args.csv_filename)
+            tar_results(args.results)
         except Exception as err:
             logging.error("There was an error with parsing the results")
             logging.error(err)
