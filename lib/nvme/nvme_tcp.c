@@ -1648,15 +1648,19 @@ nvme_tcp_read_data(struct nvme_tcp_qpair *tqpair, int bytes,
 	return NVME_TCP_CONNECTION_FATAL;
 }
 
+
 static int
-nvme_tcp_readv_data(struct nvme_tcp_qpair *tqpair, struct iovec *iov, int iovcnt)
+nvme_tcp_read_payload_data(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_pdu *pdu)
 {
+	struct iovec iov[NVME_TCP_MAX_SGL_DESCRIPTORS + 1];
+	int iovcnt;
 	int ret, count, i;
 
 	assert(tqpair->sock != NULL);
-	if (iov == NULL || iovcnt == 0) {
-		return 0;
-	}
+
+	iovcnt = nvme_tcp_build_payload_iovs(iov, NVME_TCP_MAX_SGL_DESCRIPTORS + 1, pdu,
+					     pdu->ddgst_enable, NULL);
+	assert(iovcnt >= 0);
 
 	count = 0;
 	for (i = 0; i < iovcnt; i++) {
@@ -1674,20 +1678,6 @@ nvme_tcp_readv_data(struct nvme_tcp_qpair *tqpair, struct iovec *iov, int iovcnt
 	}
 
 	return count;
-}
-
-
-static int
-nvme_tcp_read_payload_data(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_pdu *pdu)
-{
-	struct iovec iov[NVME_TCP_MAX_SGL_DESCRIPTORS + 1];
-	int iovcnt;
-
-	iovcnt = nvme_tcp_build_payload_iovs(iov, NVME_TCP_MAX_SGL_DESCRIPTORS + 1, pdu,
-					     pdu->ddgst_enable, NULL);
-	assert(iovcnt >= 0);
-
-	return nvme_tcp_readv_data(tqpair, iov, iovcnt);
 }
 
 static int
