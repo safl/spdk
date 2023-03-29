@@ -1651,37 +1651,29 @@ nvme_tcp_read_data(struct nvme_tcp_qpair *tqpair, int bytes,
 static int
 nvme_tcp_readv_data(struct nvme_tcp_qpair *tqpair, struct iovec *iov, int iovcnt)
 {
-	int ret;
+	int ret, count, i;
 
 	assert(tqpair->sock != NULL);
 	if (iov == NULL || iovcnt == 0) {
 		return 0;
 	}
 
-	if (iovcnt == 1) {
-		return nvme_tcp_read_data(tqpair, iov->iov_len, iov->iov_base);
-	}
+	count = 0;
+	for (i = 0; i < iovcnt; i++) {
+		ret = nvme_tcp_read_data(tqpair, iov[i].iov_len, iov[i].iov_base);
 
-	ret = spdk_sock_readv(tqpair->sock, iov, iovcnt);
-
-	if (ret > 0) {
-		return ret;
-	}
-
-	if (ret < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			return 0;
+		if (ret < 0) {
+			return ret;
 		}
 
-		/* For connect reset issue, do not output error log */
-		if (errno != ECONNRESET) {
-			SPDK_ERRLOG("spdk_sock_readv() failed, errno %d: %s\n",
-				    errno, spdk_strerror(errno));
+		count += ret;
+
+		if ((size_t)ret < iov[i].iov_len) {
+			break;
 		}
 	}
 
-	/* connection closed */
-	return NVME_TCP_CONNECTION_FATAL;
+	return count;
 }
 
 
