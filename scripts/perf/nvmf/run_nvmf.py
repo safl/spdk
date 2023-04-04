@@ -892,6 +892,10 @@ class Initiator(Server):
     def gen_fio_numa_section(self, fio_filenames_list, num_jobs):
         numa_stats = {}
         allowed_cpus = []
+
+        if self.cpus_allowed:
+            return ""
+
         for nvme in fio_filenames_list:
             nvme_numa = self.get_nvme_subsystem_numa(os.path.basename(nvme))
             numa_stats[nvme_numa] = numa_stats.setdefault(nvme_numa, 0) + 1
