@@ -789,6 +789,10 @@ vbdev_crypto_claim(const char *bdev_name)
 		bdev = spdk_bdev_desc_get_bdev(vbdev->base_desc);
 		vbdev->base_bdev = bdev;
 
+		if (name->opts->uuid) {
+			spdk_uuid_copy(&vbdev->crypto_bdev.uuid, name->opts->uuid);
+		}
+
 		vbdev->crypto_bdev.write_cache = bdev->write_cache;
 		if (bdev->optimal_io_boundary > 0) {
 			vbdev->crypto_bdev.optimal_io_boundary =

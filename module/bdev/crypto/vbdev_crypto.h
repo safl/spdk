@@ -23,6 +23,7 @@
 struct vbdev_crypto_opts {
 	char				*vbdev_name;	/* name of the vbdev to create */
 	char				*bdev_name;	/* base bdev name */
+	struct spdk_uuid	*uuid;	/* uuid for vbdev */
 	struct spdk_accel_crypto_key	*key;		/* crypto key */
 	bool				key_owner;	/* If wet to true then the key was created by RPC and needs to be destroyed */
 };

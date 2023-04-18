@@ -8,6 +8,7 @@
 #include "vbdev_crypto.h"
 
 #include "spdk/hexlify.h"
+#include "spdk/uuid.h"
 
 /* Reasonable bdev name length + cipher's name len */
 #define MAX_KEY_NAME_LEN 128
@@ -16,6 +17,7 @@
 struct rpc_construct_crypto {
 	char *base_bdev_name;
 	char *name;
+	char *uuid;
 	char *crypto_pmd;
 	struct spdk_accel_crypto_key_create_param param;
 };
@@ -26,6 +28,7 @@ free_rpc_construct_crypto(struct rpc_construct_crypto *r)
 {
 	free(r->base_bdev_name);
 	free(r->name);
+	free(r->uuid);
 	free(r->crypto_pmd);
 	free(r->param.cipher);
 	if (r->param.hex_key) {
@@ -43,6 +46,7 @@ free_rpc_construct_crypto(struct rpc_construct_crypto *r)
 static const struct spdk_json_object_decoder rpc_construct_crypto_decoders[] = {
 	{"base_bdev_name", offsetof(struct rpc_construct_crypto, base_bdev_name), spdk_json_decode_string},
 	{"name", offsetof(struct rpc_construct_crypto, name), spdk_json_decode_string},
+	{"uuid", offsetof(struct rpc_construct_crypto, uuid), spdk_json_decode_string, true},
 	{"crypto_pmd", offsetof(struct rpc_construct_crypto, crypto_pmd), spdk_json_decode_string, true},
 	{"key", offsetof(struct rpc_construct_crypto, param.hex_key), spdk_json_decode_string, true},
 	{"cipher", offsetof(struct rpc_construct_crypto, param.cipher), spdk_json_decode_string, true},
@@ -55,6 +59,7 @@ create_crypto_opts(struct rpc_construct_crypto *rpc, struct spdk_accel_crypto_ke
 		   bool key_owner)
 {
 	struct vbdev_crypto_opts *opts = calloc(1, sizeof(*opts));
+	struct spdk_uuid decoded_uuid;
 
 	if (!opts) {
 		return NULL;
@@ -69,6 +74,14 @@ create_crypto_opts(struct rpc_construct_crypto *rpc, struct spdk_accel_crypto_ke
 	if (!opts->vbdev_name) {
 		free_crypto_opts(opts);
 		return NULL;
+	}
+
+	if (rpc->uuid) {
+		if (spdk_uuid_parse(&decoded_uuid, rpc->uuid)) {
+			free_crypto_opts(opts);
+			return NULL;
+		}
+		opts->uuid = &decoded_uuid;
 	}
 
 	opts->key = key;
