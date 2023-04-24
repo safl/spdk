@@ -448,25 +448,39 @@ build_eal_cmdline(const struct spdk_env_opts *opts)
 	 * ASAN shadow region, otherwise ASAN-enabled builds will ignore the
 	 * mmap hint.
 	 *
+	 * Skip when anonymous memory (--no-huge) is used.
+	 *
 	 * Ref: https://github.com/google/sanitizers/wiki/AddressSanitizerAlgorithm
 	 */
-	args = push_arg(args, &argcount, _sprintf_alloc("--base-virtaddr=0x%" PRIx64, opts->base_virtaddr));
-	if (args == NULL) {
-		return -1;
+	if (!opts->env_context || strstr(opts->env_context, "--no-huge") == NULL) {
+		args = push_arg(args, &argcount, _sprintf_alloc("--base-virtaddr=0x%" PRIx64, opts->base_virtaddr));
+		if (args == NULL) {
+			return -1;
+		}
 	}
 
 	/* --match-allocation prevents DPDK from merging or splitting system memory allocations under the hood.
 	 * This is critical for RDMA when attempting to use an rte_mempool based buffer pool. If DPDK merges two
 	 * physically or IOVA contiguous memory regions, then when we go to allocate a buffer pool, it can split
 	 * the memory for a buffer over two allocations meaning the buffer will be split over a memory region.
+	 *
+	 * Skip with modes that don't support this setting.
+	 *
+	 * Ref: https://doc.dpdk.org/guides/prog_guide/env_abstraction_layer.html#hugepage-allocation-matching
 	 */
-	if (!opts->env_context || strstr(opts->env_context, "--legacy-mem") == NULL) {
+	if (!opts->env_context || (
+				strstr(opts->env_context, "--legacy-mem") == NULL &&
+				strstr(opts->env_context, "--no-huge") == NULL)) {
 		args = push_arg(args, &argcount, _sprintf_alloc("%s", "--match-allocations"));
 		if (args == NULL) {
 			return -1;
 		}
 	}
 
+	/* --no-huge does not allow secondary-processes.
+	 *
+	 * Ref: https://doc.dpdk.org/guides/linux_gsg/linux_eal_parameters.html#debugging-options
+	 */
 	if (opts->shm_id < 0) {
 		args = push_arg(args, &argcount, _sprintf_alloc("--file-prefix=spdk_pid%d",
 				getpid()));
@@ -474,15 +488,21 @@ build_eal_cmdline(const struct spdk_env_opts *opts)
 			return -1;
 		}
 	} else {
-		args = push_arg(args, &argcount, _sprintf_alloc("--file-prefix=spdk%d",
-				opts->shm_id));
-		if (args == NULL) {
-			return -1;
-		}
+		if (!opts->env_context || strstr(opts->env_context, "--no-huge") == NULL) {
+			args = push_arg(args, &argcount, _sprintf_alloc("--file-prefix=spdk%d",
+					opts->shm_id));
+			if (args == NULL) {
+				return -1;
+			}
 
-		/* set the process type */
-		args = push_arg(args, &argcount, _sprintf_alloc("--proc-type=auto"));
-		if (args == NULL) {
+			/* set the process type */
+			args = push_arg(args, &argcount, _sprintf_alloc("--proc-type=auto"));
+			if (args == NULL) {
+				return -1;
+			}
+		} else {
+			fprintf(stderr, "--shm-id requires hugepages (--no-huge provided)\n");
+			free_args(args, argcount);
 			return -1;
 		}
 	}
