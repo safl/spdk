@@ -6,11 +6,13 @@
 
 rootdir=$(readlink -f "$(dirname "$BASH_SOURCE")/../../../")
 source "$rootdir/scripts/common.sh"
+source "$rootdir/test/common/sync/functions.sh"
 
-declare -A ctrls=()
-declare -A nvmes=()
-declare -A bdfs=()
-declare -a ordered_ctrls=()
+declare -A ctrls_g=()
+declare -A nvmes_g=()
+declare -A bdfs_g=()
+declare -a ordered_ctrls_g=()
+
 nvme_name=""
 
 nvme_get() {
@@ -57,20 +59,20 @@ scan_nvme_ctrls() {
 			nvme_get "$ns_dev" id-ns "/dev/$ns_dev"
 			_ctrl_ns[${ns##*n}]=$ns_dev
 		done
-		ctrls["$ctrl_dev"]=$ctrl_dev
-		nvmes["$ctrl_dev"]=${ctrl_dev}_ns
-		bdfs["$ctrl_dev"]=$pci
-		ordered_ctrls[${ctrl_dev/nvme/}]=$ctrl_dev
+		ctrls_g["$ctrl_dev"]=$ctrl_dev
+		nvmes_g["$ctrl_dev"]=${ctrl_dev}_ns
+		bdfs_g["$ctrl_dev"]=$pci
+		ordered_ctrls_g[${ctrl_dev/nvme/}]=$ctrl_dev
 	done
-	((${#ctrls[@]} > 0))
+	((${#ctrls_g[@]} > 0))
 }
 
 get_nvme_ctrl_feature() {
 	local ctrl=$1 reg=${2:-cntlid}
 
-	[[ -n ${ctrls["$ctrl"]} ]] || return 1
+	[[ -n ${ctrls_g["$ctrl"]} ]] || return 1
 
-	local -n _ctrl=${ctrls["$ctrl"]}
+	local -n _ctrl=${ctrls_g["$ctrl"]}
 
 	[[ -n ${_ctrl["$reg"]} ]] || return 1
 	echo "${_ctrl["$reg"]}"
@@ -79,9 +81,9 @@ get_nvme_ctrl_feature() {
 get_nvme_ns_feature() {
 	local ctrl=$1 ns=$2 reg=${3:-nsze}
 
-	[[ -n ${nvmes["$ctrl"]} ]] || return 1
+	[[ -n ${nvmes_g["$ctrl"]} ]] || return 1
 
-	local -n _nss=${nvmes["$ctrl"]}
+	local -n _nss=${nvmes_g["$ctrl"]}
 	[[ -n ${_nss[ns]} ]] || return 1
 
 	local -n _ns=${_nss[ns]}
@@ -93,8 +95,8 @@ get_nvme_ns_feature() {
 get_nvme_nss() {
 	local ctrl=$1
 
-	[[ -n ${nvmes["$ctrl"]} ]] || return 1
-	local -n _nss=${nvmes["$ctrl"]}
+	[[ -n ${nvmes_g["$ctrl"]} ]] || return 1
+	local -n _nss=${nvmes_g["$ctrl"]}
 
 	echo "${!_nss[@]}"
 }
@@ -102,9 +104,9 @@ get_nvme_nss() {
 get_active_lbaf() {
 	local ctrl=$1 ns=$2 reg lbaf
 
-	[[ -n ${nvmes["$ctrl"]} ]] || return 1
+	[[ -n ${nvmes_g["$ctrl"]} ]] || return 1
 
-	local -n _nss=${nvmes["$ctrl"]}
+	local -n _nss=${nvmes_g["$ctrl"]}
 	[[ -n ${_nss[ns]} ]] || return 1
 
 	local -n _ns=${_nss[ns]}
@@ -141,10 +143,10 @@ get_oacs() {
 }
 
 get_nvmes_with_ns_management() {
-	((${#ctrls[@]} == 0)) && scan_nvme_ctrls
+	((${#ctrls_g[@]} == 0)) && scan_nvme_ctrls
 
 	local ctrl
-	for ctrl in "${!ctrls[@]}"; do
+	for ctrl in "${!ctrls_g[@]}"; do
 		get_oacs "$ctrl" nsmgt && echo "$ctrl"
 	done
 
@@ -189,13 +191,13 @@ ctrl_has_scc() {
 }
 
 get_ctrls_with_feature() {
-	((${#ctrls[@]} == 0)) && scan_nvme_ctrls
+	((${#ctrls_g[@]} == 0)) && scan_nvme_ctrls
 
 	local ctrl feature=${1:-fdp}
 
 	[[ $(type -t "ctrl_has_$feature") == function ]] || return 1
 
-	for ctrl in "${!ctrls[@]}"; do
+	for ctrl in "${!ctrls_g[@]}"; do
 		"ctrl_has_$feature" "$ctrl" && echo "$ctrl"
 	done
 }
@@ -209,4 +211,34 @@ get_ctrl_with_feature() {
 		return 0
 	fi
 	return 1
+}
+
+nvme_namespace_revert() {
+	scan_nvme_ctrls
+
+	local _ctrls ctrl
+	local unvmcap tnvmcap cntlid size blksize=512
+
+	_ctrls=($(get_nvme_with_ns_management))
+
+	for ctrl in "${_ctrls[@]}"; do
+		# This assumes every NVMe controller contains single namespace,
+		# encompassing Total NVM Capacity and formatted as 512 block size.
+		# 512 block size is needed for test/vhost/vhost_boot.sh to
+		# successfully run.
+		unvmcap=$(get_nvme_ctrl_feature "$ctrl" unvmcap)
+		tnvmcap=$(get_nvme_ctrl_feature "$ctrl" tnvmcap)
+		cntlid=$(get_nvme_ctrl_feature "$ctrl" cntlid)
+		if ((unvmcap == 0)); then
+			# All available space already used
+			continue
+		fi
+		size=$((tnvmcap / blksize))
+		nvme detach-ns "/dev/$ctrl" -n 0xffffffff -c "$cntlid" || true
+		nvme delete-ns "/dev/$ctrl" -n 0xffffffff || true
+		nvme create-ns "/dev/$ctrl" -s "$size" -c "$size" -b "$blksize"
+		nvme attach-ns "/dev/$ctrl" -n 1 -c "$cntlid"
+		nvme reset "/dev/$ctrl"
+		waitforfile "/dev/${ctrl}n1"
+	done
 }

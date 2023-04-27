@@ -18,7 +18,7 @@ if ! nvme_name=$(get_nvme_with_ns_management); then
 fi
 
 nvme_dev=/dev/${nvme_name}
-bdf=${bdfs["$nvme_name"]}
+bdf=${bdfs_g["$nvme_name"]}
 nsids=($(get_nvme_nss "$nvme_name"))
 
 # Detect supported features and configuration

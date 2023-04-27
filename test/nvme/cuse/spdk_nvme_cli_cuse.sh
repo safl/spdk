@@ -32,7 +32,7 @@ fi
 
 ctrlr="/dev/${nvme_name}"
 ns="/dev/${nvme_name}n1"
-bdf=${bdfs["$nvme_name"]}
+bdf=${bdfs_g["$nvme_name"]}
 
 waitforblk "${nvme_name}n1"
 

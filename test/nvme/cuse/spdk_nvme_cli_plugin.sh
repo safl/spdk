@@ -51,8 +51,8 @@ spdk_tgt_pid=$!
 waitforlisten $spdk_tgt_pid
 
 # Keep ctrls in order as cuse will always start registering with id 0 regardless of the ctrl's name
-for ctrl in "${ordered_ctrls[@]}"; do
-	$rpc_py bdev_nvme_attach_controller -b "$ctrl" -t PCIe -a "${bdfs["$ctrl"]}"
+for ctrl in "${ordered_ctrls_g[@]}"; do
+	$rpc_py bdev_nvme_attach_controller -b "$ctrl" -t PCIe -a "${bdfs_g["$ctrl"]}"
 	$rpc_py bdev_nvme_cuse_register -n "$ctrl"
 
 done

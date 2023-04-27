@@ -11,7 +11,7 @@ source "$rootdir/test/nvme/cuse/common.sh"
 
 scan_nvme_ctrls
 ctrl=$(get_ctrl_with_feature fdp) || exit 1
-bdf=${bdfs["$ctrl"]}
+bdf=${bdfs_g["$ctrl"]}
 
 "$rootdir/scripts/setup.sh"
 

@@ -14,7 +14,7 @@ source "$rootdir/test/nvme/cuse/common.sh"
 "$rootdir/scripts/setup.sh" reset
 
 scan_nvme_ctrls
-ctrl=$(get_ctrl_with_feature scc) bdf=${bdfs["$ctrl"]}
+ctrl=$(get_ctrl_with_feature scc) bdf=${bdfs_g["$ctrl"]}
 
 "$rootdir/scripts/setup.sh"
 

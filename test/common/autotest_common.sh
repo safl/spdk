@@ -55,6 +55,9 @@ source "$rootdir/test/common/applications.sh"
 source "$rootdir/scripts/common.sh"
 source "$rootdir/scripts/perf/pm/common"
 
+source "$rootdir/test/common/nvme/functions.sh"
+source "$rootdir/test/common/sync/functions.sh"
+
 : ${RUN_NIGHTLY:=0}
 export RUN_NIGHTLY
 
@@ -1261,21 +1264,6 @@ function waitforblk_disconnect() {
 	return 0
 }
 
-function waitforfile() {
-	local i=0
-	while [ ! -e $1 ]; do
-		[ $i -lt 200 ] || break
-		i=$((i + 1))
-		sleep 0.1
-	done
-
-	if [ ! -e $1 ]; then
-		return 1
-	fi
-
-	return 0
-}
-
 function fio_config_gen() {
 	local config_file=$1
 	local workload=$2
@@ -1510,56 +1498,11 @@ function get_first_nvme_bdf() {
 	echo "${bdfs[0]}"
 }
 
-function nvme_namespace_revert() {
-	$rootdir/scripts/setup.sh
-	sleep 1
-	local bdfs=()
-	# If there are no nvme bdfs, just return immediately
-	bdfs=($(get_nvme_bdfs)) || return 0
-
-	$rootdir/scripts/setup.sh reset
-
-	for bdf in "${bdfs[@]}"; do
-		nvme_ctrlr=/dev/$(get_nvme_ctrlr_from_bdf ${bdf})
-		if [[ -z "${nvme_ctrlr:-}" ]]; then
-			continue
-		fi
-
-		# Check Optional Admin Command Support for Namespace Management
-		oacs=$(nvme id-ctrl ${nvme_ctrlr} | grep oacs | cut -d: -f2)
-		oacs_ns_manage=$((oacs & 0x8))
-
-		if [[ "$oacs_ns_manage" -ne 0 ]]; then
-			# This assumes every NVMe controller contains single namespace,
-			# encompassing Total NVM Capacity and formatted as 512 block size.
-			# 512 block size is needed for test/vhost/vhost_boot.sh to
-			# successfully run.
-
-			unvmcap=$(nvme id-ctrl ${nvme_ctrlr} | grep unvmcap | cut -d: -f2)
-			if [[ "$unvmcap" -eq 0 ]]; then
-				# All available space already used
-				continue
-			fi
-			tnvmcap=$(nvme id-ctrl ${nvme_ctrlr} | grep tnvmcap | cut -d: -f2)
-			cntlid=$(nvme id-ctrl ${nvme_ctrlr} | grep cntlid | cut -d: -f2)
-			blksize=512
-
-			size=$((tnvmcap / blksize))
-
-			nvme detach-ns ${nvme_ctrlr} -n 0xffffffff -c $cntlid || true
-			nvme delete-ns ${nvme_ctrlr} -n 0xffffffff || true
-			nvme create-ns ${nvme_ctrlr} -s ${size} -c ${size} -b ${blksize}
-			nvme attach-ns ${nvme_ctrlr} -n 1 -c $cntlid
-			nvme reset ${nvme_ctrlr}
-			waitforfile "${nvme_ctrlr}n1"
-		fi
-	done
-}
-
 # Get BDFs based on device ID, such as 0x0a54
 function get_nvme_bdfs_by_id() {
-	local bdfs=() _bdfs=()
+	local bdfs=() _bdfs=() bdf
 	_bdfs=($(get_nvme_bdfs)) || return 0
+
 	for bdf in "${_bdfs[@]}"; do
 		device=$(cat /sys/bus/pci/devices/$bdf/device) || true
 		if [[ "$device" == "$1" ]]; then
@@ -1573,13 +1516,15 @@ function get_nvme_bdfs_by_id() {
 
 function opal_revert_cleanup() {
 	# The OPAL CI tests is only used for P4510 devices.
+	local bdfs bdf bdf_id
+
 	mapfile -t bdfs < <(get_nvme_bdfs_by_id 0x0a54)
 	if [[ -z ${bdfs[0]:-} ]]; then
 		return 0
 	fi
 
 	$SPDK_BIN_DIR/spdk_tgt &
-	spdk_tgt_pid=$!
+	local spdk_tgt_pid=$!
 	waitforlisten $spdk_tgt_pid
 
 	bdf_id=0
