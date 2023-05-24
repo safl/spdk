@@ -108,6 +108,7 @@ struct spdk_uring_sock_group_impl {
 	uint32_t				io_inflight;
 	uint32_t				io_queued;
 	uint32_t				io_avail;
+	bool					enable_recv_pipe;
 	struct pending_recv_list		pending_recv;
 
 	struct io_uring_buf_ring		*buf_ring;
@@ -368,16 +369,19 @@ static int
 uring_sock_set_recvbuf(struct spdk_sock *_sock, int sz)
 {
 	struct spdk_uring_sock *sock = __uring_sock(_sock);
+	struct spdk_sock_group_impl *base_impl = _sock->group_impl;
 	int min_size;
 	int rc;
 
 	assert(sock != NULL);
 
 	if (_sock->impl_opts.enable_recv_pipe) {
-		rc = uring_sock_alloc_pipe(sock, sz);
-		if (rc) {
-			SPDK_ERRLOG("unable to allocate sufficient recvbuf with sz=%d on sock=%p\n", sz, _sock);
-			return rc;
+		if (base_impl == NULL || (__uring_group_impl(base_impl))->enable_recv_pipe) {
+			rc = uring_sock_alloc_pipe(sock, sz);
+			if (rc) {
+				SPDK_ERRLOG("unable to allocate sufficient recvbuf with sz=%d on sock=%p\n", sz, _sock);
+				return rc;
+			}
 		}
 	}
 
@@ -1695,6 +1699,7 @@ uring_sock_group_impl_create(void)
 	}
 
 	group_impl->io_avail = SPDK_SOCK_GROUP_QUEUE_DEPTH;
+	group_impl->enable_recv_pipe = g_spdk_uring_sock_impl_opts.enable_recv_pipe;
 
 	if (io_uring_queue_init(SPDK_SOCK_GROUP_QUEUE_DEPTH, &group_impl->uring, 0) < 0) {
 		SPDK_ERRLOG("uring I/O context setup failure\n");
@@ -1726,6 +1731,17 @@ uring_sock_group_impl_add_sock(struct spdk_sock_group_impl *_group,
 	struct spdk_uring_sock *sock = __uring_sock(_sock);
 	struct spdk_uring_sock_group_impl *group = __uring_group_impl(_group);
 	int rc;
+
+	if (!TAILQ_EMPTY(&_group->socks) || group->buf_ring_count > 0) {
+		/* The enable_recv_pipe parameter has to match */
+		if (group->enable_recv_pipe != _sock->impl_opts.enable_recv_pipe) {
+			SPDK_ERRLOG("Sockets with different enable_recv_pipe values added to the same group!\n");
+			return -EINVAL;
+		}
+	} else {
+		/* The first socket dictates the group's enable_recv_pipe behavior */
+		group->enable_recv_pipe = _sock->impl_opts.enable_recv_pipe;
+	}
 
 	sock->group = group;
 	sock->write_task.sock = sock;
@@ -1775,7 +1791,7 @@ uring_sock_group_populate_buf_ring(struct spdk_uring_sock_group_impl *group)
 	struct spdk_uring_buf_tracker *tracker;
 	int count, mask;
 
-	if (g_spdk_uring_sock_impl_opts.enable_recv_pipe) {
+	if (group->enable_recv_pipe) {
 		/* If recv_pipe is enabled, we do not post buffers. */
 		return;
 	}
@@ -1825,8 +1841,10 @@ uring_sock_group_impl_poll(struct spdk_sock_group_impl *_group, int max_events,
 		}
 	}
 
-	/* Try to re-populate the io_uring's buffer pool using user-provided buffers */
-	uring_sock_group_populate_buf_ring(group);
+	if (!TAILQ_EMPTY(&_group->socks)) {
+		/* Try to re-populate the io_uring's buffer pool using user-provided buffers */
+		uring_sock_group_populate_buf_ring(group);
+	}
 
 	to_submit = group->io_queued;
 
