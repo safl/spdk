@@ -1576,25 +1576,64 @@ posix_sock_read(struct spdk_posix_sock *sock)
 	return bytes_recvd;
 }
 
+/* Do a read, bypassing the recv pipe */
+static ssize_t
+posix_sock_readv_no_pipe(struct spdk_posix_sock *sock, struct iovec *iov, int iovcnt)
+{
+	struct spdk_posix_sock_group_impl *group = __posix_group_impl(sock->base.group_impl);
+	ssize_t len, rc;
+	int i;
+
+	assert(sock->pipe_has_data == false);
+	if (group && !sock->socket_has_data) {
+		errno = EAGAIN;
+		return -1;
+	}
+
+	len = 0;
+	for (i = 0; i < iovcnt; i++) {
+		len += iov[i].iov_len;
+	}
+
+	if (sock->ssl) {
+		rc = SSL_readv(sock->ssl, iov, iovcnt);
+
+		/* With SSL we can't always rely on epoll to indicate there is more
+		 * data. It may already be buffered in user space. We'll just leave
+		 * the socket marked as having data.
+		 */
+	} else {
+		rc = readv(sock->fd, iov, iovcnt);
+
+		if (rc <= len) {
+			/* We drained the kernel socket entirely. At least, we probably did.
+			* It's possible that rc == len and there really is more data
+			* on the socket, but it's better to call this done than to
+			* indicate another recv should be done. We can instead let
+			* epoll just tell us again the next time we poll. */
+			sock->socket_has_data = false;
+
+			if (group) {
+				TAILQ_REMOVE(&group->socks_with_data, sock, link);
+			}
+		}
+	}
+
+
+
+	return rc;
+}
+
 static ssize_t
 posix_sock_readv(struct spdk_sock *_sock, struct iovec *iov, int iovcnt)
 {
 	struct spdk_posix_sock *sock = __posix_sock(_sock);
 	struct spdk_posix_sock_group_impl *group = __posix_group_impl(sock->base.group_impl);
-	int rc, i;
-	size_t len;
+	int i;
+	ssize_t len, rc;
 
 	if (sock->recv_pipe == NULL) {
-		assert(sock->pipe_has_data == false);
-		if (group && sock->socket_has_data) {
-			sock->socket_has_data = false;
-			TAILQ_REMOVE(&group->socks_with_data, sock, link);
-		}
-		if (sock->ssl) {
-			return SSL_readv(sock->ssl, iov, iovcnt);
-		} else {
-			return readv(sock->fd, iov, iovcnt);
-		}
+		return posix_sock_readv_no_pipe(sock, iov, iovcnt);
 	}
 
 	/* If the socket is not in a group, we must assume it always has
@@ -1608,12 +1647,7 @@ posix_sock_readv(struct spdk_sock *_sock, struct iovec *iov, int iovcnt)
 		}
 
 		if (len >= MIN_SOCK_PIPE_SIZE) {
-			/* TODO: Should this detect if kernel socket is drained? */
-			if (sock->ssl) {
-				return SSL_readv(sock->ssl, iov, iovcnt);
-			} else {
-				return readv(sock->fd, iov, iovcnt);
-			}
+			return posix_sock_readv_no_pipe(sock, iov, iovcnt);
 		}
 
 		/* Otherwise, do a big read into our pipe */
