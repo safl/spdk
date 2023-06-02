@@ -55,7 +55,9 @@ DEFINE_STUB_V(nvme_io_msg_ctrlr_unregister,
 DEFINE_STUB(spdk_nvme_ctrlr_is_active_ns, bool,
 	    (struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid), true);
 
+#ifdef __linux__
 DEFINE_STUB(fuse_reply_err, int, (fuse_req_t req, int err), 0);
+#endif
 DEFINE_STUB_V(fuse_session_exit, (struct fuse_session *se));
 DEFINE_STUB(pthread_join, int, (pthread_t tid, void **val), 0);
 
@@ -137,6 +139,7 @@ spdk_nvme_ctrlr_get_ns(struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid)
 }
 
 struct cuse_device *g_cuse_device;
+#ifdef __linux__
 DEFINE_RETURN_MOCK(fuse_req_userdata, void *);
 void *
 fuse_req_userdata(fuse_req_t req)
@@ -364,6 +367,57 @@ test_cuse_nvme_submit_passthru_cmd_with_md(void)
 	free(passthru_cmd);
 	free(g_cuse_device);
 }
+#else
+static void
+test_cuse_nvme_submit_passthru_cmd(void)
+{
+	struct nvme_pt_command *pt_cmd = NULL;
+	fuse_req_t req = calloc(1, sizeof(struct fuse_req));
+
+	pt_cmd = calloc(1, sizeof(struct nvme_pt_command));
+	g_cuse_device = calloc(1, sizeof(struct cuse_device));
+	req->cdev = g_cuse_device;
+
+	/* Use fatal or we'll segfault if we didn't get memory */
+	SPDK_CU_ASSERT_FATAL(pt_cmd != NULL);
+	SPDK_CU_ASSERT_FATAL(g_cuse_device != NULL);
+	g_cuse_device->ctrlr = (void *)0xDEADBEEF;
+
+	g_ut_ctx = NULL;
+	/* Passthrough command */
+	pt_cmd->cmd.opc          = SPDK_NVME_DATA_CONTROLLER_TO_HOST;
+	pt_cmd->cmd.nsid         = 1;
+	pt_cmd->len              = 512;
+	pt_cmd->cmd.cdw10        = 0xc0de1010;
+	pt_cmd->cmd.cdw11        = 0xc0de1111;
+	pt_cmd->cmd.cdw12        = 0xc0de1212;
+	pt_cmd->cmd.cdw13        = 0xc0de1313;
+	pt_cmd->cmd.cdw14        = 0xc0de1414;
+	pt_cmd->cmd.cdw15        = 0xc0de1515;
+
+	/* Send IO Command IOCTL */
+	cuse_nvme_passthru_cmd_send(req, pt_cmd, NULL, 0);
+	SPDK_CU_ASSERT_FATAL(g_ut_ctx != NULL);
+	CU_ASSERT(g_ut_ctx->data != NULL);
+	CU_ASSERT(g_ut_ctx->metadata == NULL);
+	CU_ASSERT(g_ut_ctx->req               == req);
+	CU_ASSERT(g_ut_ctx->data_len          == 512);
+	CU_ASSERT(g_ut_ctx->metadata_len      == 0);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.opc      == SPDK_NVME_DATA_CONTROLLER_TO_HOST);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.nsid     == 1);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.cdw10    == 0xc0de1010);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.cdw11    == 0xc0de1111);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.cdw12    == 0xc0de1212);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.cdw13    == 0xc0de1313);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.cdw14    == 0xc0de1414);
+	CU_ASSERT(g_ut_ctx->nvme_cmd.cdw15    == 0xc0de1515);
+
+	cuse_io_ctx_free(g_ut_ctx);
+	free(req);
+	free(pt_cmd);
+	free(g_cuse_device);
+}
+#endif
 
 static void
 test_nvme_cuse_get_cuse_ns_device(void)
@@ -395,6 +449,7 @@ test_nvme_cuse_get_cuse_ns_device(void)
 	TAILQ_REMOVE(&g_ctrlr_ctx_head, &ctrlr_device, tailq);
 }
 
+#ifdef __linux__
 static void
 test_cuse_nvme_submit_io(void)
 {
@@ -469,13 +524,20 @@ test_cuse_nvme_submit_io(void)
 
 	free(user_io);
 }
+#endif
 
 static void
 test_cuse_nvme_reset(void)
 {
 	struct cuse_device cuse_device = {};
 	struct spdk_nvme_ctrlr ctrlr = {};
+
+#ifdef __linux__
 	fuse_req_t req = (void *)0xDEADBEEF;
+#else
+	fuse_req_t req = calloc(1, sizeof(struct fuse_req));
+	req->cdev = &cuse_device;
+#endif
 
 	cuse_device.ctrlr = &ctrlr;
 	g_cuse_device = &cuse_device;
@@ -491,7 +553,14 @@ test_cuse_nvme_reset(void)
 	cuse_device.nsid = 0;
 
 	cuse_nvme_reset(req, 0, NULL, NULL, 0, NULL, 4096, 4096);
+
+#ifdef __linux__
 	CU_ASSERT(g_ut_ctx == (void *)0xDEADBEEF);
+#else
+	CU_ASSERT(g_ut_ctx == (void *)req);
+	free(req);
+#endif
+
 	CU_ASSERT(g_ut_ctrlr == &ctrlr);
 	CU_ASSERT(g_ut_nsid == 0);
 }
@@ -602,6 +671,8 @@ main(int argc, char **argv)
 	CU_initialize_registry();
 
 	suite = CU_add_suite("nvme_cuse", NULL, NULL);
+
+#ifdef __linux__
 	CU_ADD_TEST(suite, test_cuse_nvme_submit_io_read_write);
 	CU_ADD_TEST(suite, test_cuse_nvme_submit_io_read_write_with_md);
 	CU_ADD_TEST(suite, test_cuse_nvme_submit_passthru_cmd);
@@ -611,6 +682,13 @@ main(int argc, char **argv)
 	CU_ADD_TEST(suite, test_cuse_nvme_reset);
 	CU_ADD_TEST(suite, test_nvme_cuse_stop);
 	CU_ADD_TEST(suite, test_spdk_nvme_cuse_get_ctrlr_name);
+#else
+	CU_ADD_TEST(suite, test_cuse_nvme_submit_passthru_cmd);
+	CU_ADD_TEST(suite, test_nvme_cuse_get_cuse_ns_device);
+	CU_ADD_TEST(suite, test_cuse_nvme_reset);
+	CU_ADD_TEST(suite, test_nvme_cuse_stop);
+	CU_ADD_TEST(suite, test_spdk_nvme_cuse_get_ctrlr_name);
+#endif
 
 	num_failures = spdk_ut_run_tests(argc, argv, NULL);
 	CU_cleanup_registry();

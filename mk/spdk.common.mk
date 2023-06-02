@@ -352,8 +352,19 @@ LDFLAGS += $(shell $(PKGCONF) --libs libssl11)
 endif
 endif
 
+ifeq ($(OS),Linux)
 ifneq ($(CONFIG_NVME_CUSE)$(CONFIG_FUSE),nn)
 SYS_LIBS += -lfuse3
+endif
+endif
+
+ifeq ($(OS),FreeBSD)
+ifeq ($(CONFIG_NVME_CUSE),y)
+SYS_LIBS += -lcuse
+endif
+ifeq ($(CONFIG_FUSE),y)
+SYS_LIBS += -lfuse3
+endif
 endif
 
 ifeq ($(OS).$(CC_TYPE),Windows.gcc)

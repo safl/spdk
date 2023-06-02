@@ -108,8 +108,8 @@ verify_devices(struct spdk_nvme_ctrlr *ctrlr)
 	size_t ctrlr_name_size;
 	char ctrlr_dev[256];
 	char ns_dev[256 + 1 + 10]; /* sizeof ctrl_dev + 'n' + string size of UINT32_MAX */
-	uint32_t nsid, num_ns;
-	int rv;
+	uint32_t num_ns;
+	int nsid, rv;
 
 	ctrlr_name_size = sizeof(ctrlr_name);
 	rv = spdk_nvme_cuse_get_ctrlr_name(ctrlr, ctrlr_name, &ctrlr_name_size);
@@ -121,8 +121,8 @@ verify_devices(struct spdk_nvme_ctrlr *ctrlr)
 
 	num_ns = spdk_nvme_ctrlr_get_num_ns(ctrlr);
 
-	for (nsid = 1; nsid <= num_ns; nsid++) {
-		snprintf(ns_dev, sizeof(ns_dev), "%sn%" PRIu32, ctrlr_dev, nsid);
+	for (nsid = 1; nsid <= (int)num_ns; nsid++) {
+		snprintf(ns_dev, sizeof(ns_dev), NVME_NS_PREFIX, ctrlr_dev, nsid);
 		if (spdk_nvme_ctrlr_is_active_ns(ctrlr, nsid)) {
 			CU_ASSERT(wait_for_file(ns_dev, true));
 		} else {
@@ -131,7 +131,7 @@ verify_devices(struct spdk_nvme_ctrlr *ctrlr)
 	}
 
 	/* Next one should never exist */
-	snprintf(ns_dev, sizeof(ns_dev), "%sn%" PRIu32, ctrlr_dev, nsid);
+	snprintf(ns_dev, sizeof(ns_dev), NVME_NS_PREFIX, ctrlr_dev, nsid);
 	CU_ASSERT(wait_for_file(ns_dev, false));
 }
 

@@ -20,9 +20,17 @@ if [[ -z "$nvme_name" ]]; then
 	exit 1
 fi
 
-KERNEL_SMART_JSON=$(${SMARTCTL_CMD} --json=g -a /dev/${nvme_name} | grep -v "/dev/${nvme_name}" | sort || true)
+if [[ $(uname) == "Linux" ]]; then
+	NVME_NS_PREFIX="n1"
+elif [[ $(uname) == "FreeBSD" ]]; then
+	NVME_NS_PREFIX="ns1"
+fi
 
-${SMARTCTL_CMD} -i /dev/${nvme_name}n1
+# Mask values can change
+SMART_JSON_MASK="json\.nvme_smart_health_information_log\.\|json\.local_time\.\|json\.temperature\.\|json\.power_on_time\.hours"
+KERNEL_SMART_JSON=$(${SMARTCTL_CMD} --json=g -a /dev/${nvme_name} | grep -v "/dev/${nvme_name}" -v "${SMART_JSON_MASK}" | sort || true)
+
+${SMARTCTL_CMD} -i /dev/${nvme_name}${NVME_NS_PREFIX}
 
 # logs are not provided by json output
 KERNEL_SMART_ERRLOG=$(${SMARTCTL_CMD} -l error /dev/${nvme_name})
@@ -44,15 +52,9 @@ if [ ! -c /dev/spdk/nvme0 ]; then
 	exit 1
 fi
 
-CUSE_SMART_JSON=$(${SMARTCTL_CMD} --json=g -a /dev/spdk/nvme0 | grep -v "/dev/spdk/nvme0" | sort || true)
-
-DIFF_SMART_JSON=$(diff --changed-group-format='%<' --unchanged-group-format='' <(echo "$KERNEL_SMART_JSON") <(echo "$CUSE_SMART_JSON") || true)
-
-# Mask values can change
-ERR_SMART_JSON=$(grep -v "json\.nvme_smart_health_information_log\.\|json\.local_time\.\|json\.temperature\.\|json\.power_on_time\.hours" <<< $DIFF_SMART_JSON || true)
-
-if [ -n "$ERR_SMART_JSON" ]; then
-	echo "Wrong values for: $ERR_SMART_JSON"
+CUSE_SMART_JSON=$(${SMARTCTL_CMD} --json=g -a /dev/spdk/nvme0 | grep -v "/dev/spdk/nvme0" -v "${SMART_JSON_MASK}" | sort || true)
+if [ "$KERNEL_SMART_JSON" != "$CUSE_SMART_JSON" ]; then
+	echo "Different values in smartctl json"
 	exit 1
 fi
 
@@ -63,7 +65,7 @@ if [ "$CUSE_SMART_ERRLOG" != "$KERNEL_SMART_ERRLOG" ]; then
 fi
 
 # Data integrity was checked before, now make sure other commands didn't fail
-${SMARTCTL_CMD} -i /dev/spdk/nvme0n1
+${SMARTCTL_CMD} -i /dev/spdk/nvme0${NVME_NS_PREFIX}
 ${SMARTCTL_CMD} -c /dev/spdk/nvme0
 ${SMARTCTL_CMD} -A /dev/spdk/nvme0
 

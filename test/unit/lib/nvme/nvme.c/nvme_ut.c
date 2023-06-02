@@ -321,7 +321,6 @@ test_spdk_nvme_connect(void)
 	MOCK_SET(spdk_memzone_lookup, NULL);
 	ret_ctrlr = spdk_nvme_connect(&trid, NULL, 0);
 	CU_ASSERT(ret_ctrlr == NULL);
-
 	CU_ASSERT(pthread_mutexattr_destroy(&attr) == 0);
 }
 
