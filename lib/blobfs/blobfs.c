@@ -1966,6 +1966,7 @@ spdk_fs_free_thread_ctx(struct spdk_fs_thread_ctx *ctx)
 	}
 
 	fs_channel_destroy(NULL, &ctx->ch);
+	pthread_spin_destroy(&ctx->ch.lock);
 	free(ctx);
 }
 
@@ -2904,6 +2905,8 @@ _file_free(void *ctx)
 
 	TAILQ_REMOVE(&g_caches, file, cache_tailq);
 
+	pthread_spin_unlock(&file->lock);
+	pthread_spin_destroy(&file->lock);
 	free(file->name);
 	free(file->tree);
 	free(file);
@@ -2916,6 +2919,7 @@ file_free(struct spdk_file *file)
 	pthread_spin_lock(&file->lock);
 	if (file->tree->present_mask == 0) {
 		pthread_spin_unlock(&file->lock);
+		pthread_spin_destroy(&file->lock);
 		free(file->name);
 		free(file->tree);
 		free(file);
@@ -2925,7 +2929,6 @@ file_free(struct spdk_file *file)
 	tree_free_buffers(file->tree);
 	assert(file->tree->present_mask == 0);
 	spdk_thread_send_msg(g_cache_pool_thread, _file_free, file);
-	pthread_spin_unlock(&file->lock);
 }
 
 SPDK_LOG_REGISTER_COMPONENT(blobfs)
