@@ -65,7 +65,7 @@ sock_is_loopback(int fd)
 			}
 
 			if (strncmp(ip_addr, ip_addr_tmp, sizeof(ip_addr)) == 0) {
-				memcpy(ifr.ifr_name, tmp->ifa_name, sizeof(ifr.ifr_name));
+				strncpy(ifr.ifr_name, tmp->ifa_name, sizeof(ifr.ifr_name));
 				ioctl(fd, SIOCGIFFLAGS, &ifr);
 				if (ifr.ifr_flags & IFF_LOOPBACK) {
 					is_loopback = true;
