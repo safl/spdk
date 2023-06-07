@@ -771,6 +771,55 @@ spdk_accel_submit_xor(struct spdk_io_channel *ch, void *dst, void **sources, uin
 	return accel_submit_task(accel_ch, accel_task);
 }
 
+int
+spdk_accel_submit_dif_check(struct spdk_io_channel *ch, struct iovec *iovs, size_t iovcnt,
+			    uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+			    spdk_accel_completion_cb cb_fn, void *cb_arg)
+{
+	/* TODO not implemented yet */
+	return -ENOSYS;
+}
+
+int
+spdk_accel_submit_dif_copy_insert(struct spdk_io_channel *ch, struct iovec *dst_iovs,
+				  size_t dst_iovcnt, struct iovec *src_iovs, size_t src_iovcnt,
+				  uint32_t num_blocks, struct spdk_dif_ctx *ctx, spdk_accel_completion_cb cb_fn,
+				  void *cb_arg)
+{
+	/* TODO not implemented yet */
+	return -ENOSYS;
+}
+
+int
+spdk_accel_submit_dif_copy_strip(struct spdk_io_channel *ch, struct iovec *dst_iovs,
+				 size_t dst_iovcnt, struct iovec *src_iovs, size_t src_iovcnt,
+				 uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+				 spdk_accel_completion_cb cb_fn, void *cb_arg)
+{
+	/* TODO not implemented yet */
+	return -ENOSYS;
+}
+
+int
+spdk_accel_submit_dif_copy_update(struct spdk_io_channel *ch, struct iovec *dst_iovs,
+				  size_t dst_iovcnt, struct iovec *src_iovs, size_t src_iovcnt,
+				  uint32_t num_blocks, const struct spdk_dif_ctx *src_ctx,
+				  const struct spdk_dif_ctx *dst_ctx, spdk_accel_completion_cb cb_fn,
+				  void *cb_arg)
+{
+	/* TODO not implemented yet */
+	return -ENOSYS;
+}
+
+int
+spdk_accel_submit_dix_generate(struct spdk_io_channel *ch, struct iovec *iovs, int iovcnt,
+			       struct iovec *md_iov, uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+			       spdk_accel_completion_cb cb_fn, void *cb_arg)
+{
+	/* TODO not implemented yet */
+	return -ENOSYS;
+}
+
 static inline struct accel_buffer *
 accel_get_buf(struct accel_io_channel *ch, uint64_t len)
 {

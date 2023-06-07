@@ -13,6 +13,7 @@
 
 #include "spdk/stdinc.h"
 #include "spdk/dma.h"
+#include "spdk/dif.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -317,6 +318,147 @@ int spdk_accel_submit_decompress(struct spdk_io_channel *ch, struct iovec *dst_i
  */
 int spdk_accel_submit_xor(struct spdk_io_channel *ch, void *dst, void **sources, uint32_t nsrcs,
 			  uint64_t nbytes, spdk_accel_completion_cb cb_fn, void *cb_arg);
+
+/**
+ * Submit a Data Integrity Field (DIF) check request.
+ *
+ * This operation computes the DIF on the data and compares
+ * the computed DIF to the DIF contained in the data.
+ *
+ * \param ch I/O channel associated with this call.
+ * \param iovs The io vector array. The total allocated memory size needs
+ *			   to be at least: num_blocks * block_size (provided to spdk_dif_ctx_init())
+ * \param iovcnt The size of the io vectors array.
+ * \param num_blocks Number of data blocks to check.
+ * \param ctx DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to check
+ * \param cb_fn Called when this operation completes.
+ * \param cb_arg Callback argument.
+ *
+ * \return 0 on success, negative errno on failure (please note that the actual DIF check
+ *		   error is returned in the complation callback).
+ */
+int spdk_accel_submit_dif_check(struct spdk_io_channel *ch, struct iovec *iovs, size_t iovcnt,
+				uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+				spdk_accel_completion_cb cb_fn, void *cb_arg);
+
+/**
+ * Submit a Data Integrity Field (DIF) copy and insert request.
+ *
+ * This operation copies memory from the source to the destination address,
+ * while computing the DIF on the source data and inserting the DIF into
+ * the output data.
+ *
+ * \param ch I/O channel associated with this call.
+ * \param dst_iovs The destination io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size (provided to spdk_dif_ctx_init())
+ * \param dst_iovcnt The size of the destination io vectors array.
+ * \param src_iovs The source io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size_no_md
+ * \param src_iovcnt The size of the source io vectors array.
+ * \param num_blocks Number of data blocks to process.
+ * \param ctx DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to insert
+ * \param cb_fn Called when this operation completes.
+ * \param cb_arg Callback argument.
+ *
+ * \return 0 on success, negative errno on failure.
+ */
+int spdk_accel_submit_dif_copy_insert(struct spdk_io_channel *ch, struct iovec *dst_iovs,
+				      size_t dst_iovcnt, struct iovec *src_iovs, size_t src_iovcnt,
+				      uint32_t num_blocks, struct spdk_dif_ctx *ctx, spdk_accel_completion_cb cb_fn,
+				      void *cb_arg);
+
+/**
+ * Submit a Data Integrity Field (DIF) copy and strip operation.
+ *
+ * This operation copies memory from the source to the destination address,
+ * removing the DIF. It optionally computes the DIF on the source data
+ * and compares the computed DIF to the DIF contained in the source data.
+ *
+ * \param ch I/O channel associated with this call.
+ * \param dst_iovs The destination io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size_no_md
+ * \param dst_iovcnt The size of the destination io vectors array.
+ * \param src_iovs The source io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size (provided to spdk_dif_ctx_init())
+ * \param src_iovcnt The size of the source io vectors array.
+ * \param num_blocks Number of data blocks to process.
+ * \param ctx DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to check
+ * \param cb_fn Called when this operation completes.
+ * \param cb_arg Callback argument.
+ *
+ * \return 0 on success, negative errno on failure (please note that the actual DIF check
+ *		   error is returned in the complation callback).
+ */
+int spdk_accel_submit_dif_copy_strip(struct spdk_io_channel *ch, struct iovec *dst_iovs,
+				     size_t dst_iovcnt, struct iovec *src_iovs, size_t src_iovcnt,
+				     uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+				     spdk_accel_completion_cb cb_fn, void *cb_arg);
+
+/**
+ * Submit a Data Integrity Field (DIF) copy and update operation.
+ *
+ * This operation copies memory from the source to the destination address,
+ * and optionally computes the DIF on the source data and compares the computed
+ * DIF to the DIF contained in the data. It simultaneously computes the DIF
+ * on the source data and inserts the computed DIF into the output data.
+ *
+ * \param ch I/O channel associated with this call.
+ * \param dst_iovs The destination io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size (provided to spdk_dif_ctx_init())
+ * \param dst_iovcnt The size of the destination io vectors array.
+ * \param src_iovs The source io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size (provided to spdk_dif_ctx_init())
+ * \param src_iovcnt The size of the source io vectors array.
+ * \param num_blocks Number of data blocks to process.
+ * \param src_ctx Source DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to check on the source data.
+ * \param dst_ctx Destination DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to update on the destination data.
+ * \param cb_fn Called when this operation completes.
+ * \param cb_arg Callback argument.
+ *
+ * \return 0 on success, negative errno on failure (please note that the actual DIF check
+ *		   error is returned in the complation callback).
+ */
+int spdk_accel_submit_dif_copy_update(struct spdk_io_channel *ch, struct iovec *dst_iovs,
+				      size_t dst_iovcnt, struct iovec *src_iovs, size_t src_iovcnt,
+				      uint32_t num_blocks, const struct spdk_dif_ctx *src_ctx,
+				      const struct spdk_dif_ctx *dst_ctx, spdk_accel_completion_cb cb_fn,
+				      void *cb_arg);
+
+/**
+ * Submit a Data Integrity Extension (DIX) generate operation.
+ *
+ * This operation computes the DIF on the source data and writes only
+ * the computed DIF for each source block to the destination memory location.
+ *
+ * \param ch I/O channel associated with this call.
+ * \param iovs The destination io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * block_size_no_md
+ * \param iovcnt The size of the destination io vectors array.
+ * \param md_iov The source io vector array. The total allocated memory size needs
+ *		  to be at least: num_blocks * md_size (8B or 16B, depending on the PI format)
+ * \param num_blocks Number of data blocks to process.
+ * \param ctx DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to generate
+ * \param cb_fn Called when this operation completes.
+ * \param cb_arg Callback argument.
+ *
+ * \return 0 on success, negative errno on failure.
+ */
+int spdk_accel_submit_dix_generate(struct spdk_io_channel *ch, struct iovec *iovs, int iovcnt,
+				   struct iovec *md_iov, uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+				   spdk_accel_completion_cb cb_fn, void *cb_arg);
+
 
 /** Object grouping multiple accel operations to be executed at the same point in time */
 struct spdk_accel_sequence;

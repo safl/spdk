@@ -18,6 +18,11 @@
 	spdk_accel_submit_encrypt;
 	spdk_accel_submit_decrypt;
 	spdk_accel_submit_xor;
+	spdk_accel_submit_dif_check;
+	spdk_accel_submit_dif_copy_insert;
+	spdk_accel_submit_dif_copy_strip;
+	spdk_accel_submit_dif_copy_update;
+	spdk_accel_submit_dix_generate;
 	spdk_accel_get_opc_module_name;
 	spdk_accel_assign_opc;
 	spdk_accel_write_config_json;
