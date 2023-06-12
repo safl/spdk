@@ -566,7 +566,8 @@ if __name__ == "__main__":
                                        transport_tos=args.transport_tos,
                                        nvme_error_stat=args.nvme_error_stat,
                                        rdma_srq_size=args.rdma_srq_size,
-                                       io_path_stat=args.io_path_stat)
+                                       io_path_stat=args.io_path_stat,
+                                       multipath_forbidden_mode=args.multipath_forbidden_mode)
 
     p = subparsers.add_parser('bdev_nvme_set_options',
                               help='Set options for the bdev nvme type. This is startup command.')
@@ -644,6 +645,8 @@ if __name__ == "__main__":
     p.add_argument('--io-path-stat',
                    help="""Enable collecting I/O path stat of each io path.""",
                    action='store_true')
+    p.add_argument('--multipath-forbidden-mode',
+                   help="""Set the forbidden multipath mode. Valid values are: failover""")
 
     p.set_defaults(func=bdev_nvme_set_options)
 

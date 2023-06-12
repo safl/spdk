@@ -44,6 +44,21 @@ rpc_decode_action_on_timeout(const struct spdk_json_val *val, void *out)
 	return 0;
 }
 
+static int
+rpc_decode_multipath_forbidden_mode(const struct spdk_json_val *val, void *out)
+{
+	enum bdev_nvme_multipath_mode *action = out;
+
+	if (spdk_json_strequal(val, "failover") == true) {
+		*action = BDEV_NVME_MP_MODE_FAILOVER;
+	} else {
+		SPDK_NOTICELOG("Invalid parameter value: multipath_forbidden_mode\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static const struct spdk_json_object_decoder rpc_bdev_nvme_options_decoders[] = {
 	{"action_on_timeout", offsetof(struct spdk_bdev_nvme_opts, action_on_timeout), rpc_decode_action_on_timeout, true},
 	{"timeout_us", offsetof(struct spdk_bdev_nvme_opts, timeout_us), spdk_json_decode_uint64, true},
@@ -70,6 +85,7 @@ static const struct spdk_json_object_decoder rpc_bdev_nvme_options_decoders[] = 
 	{"nvme_error_stat", offsetof(struct spdk_bdev_nvme_opts, nvme_error_stat), spdk_json_decode_bool, true},
 	{"rdma_srq_size", offsetof(struct spdk_bdev_nvme_opts, rdma_srq_size), spdk_json_decode_uint32, true},
 	{"io_path_stat", offsetof(struct spdk_bdev_nvme_opts, io_path_stat), spdk_json_decode_bool, true},
+	{"multipath_forbidden_mode", offsetof(struct spdk_bdev_nvme_opts, multipath_forbidden_mode), rpc_decode_multipath_forbidden_mode, true},
 };
 
 static void
@@ -147,12 +163,6 @@ invalid:
 	spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS, spdk_strerror(-rc));
 }
 SPDK_RPC_REGISTER("bdev_nvme_set_hotplug", rpc_bdev_nvme_set_hotplug, SPDK_RPC_RUNTIME)
-
-enum bdev_nvme_multipath_mode {
-	BDEV_NVME_MP_MODE_FAILOVER,
-	BDEV_NVME_MP_MODE_MULTIPATH,
-	BDEV_NVME_MP_MODE_DISABLE,
-};
 
 struct rpc_bdev_nvme_attach_controller {
 	char *name;
@@ -366,6 +376,7 @@ rpc_bdev_nvme_attach_controller(struct spdk_jsonrpc_request *request,
 	struct nvme_ctrlr *ctrlr = NULL;
 	size_t len, maxlen;
 	bool multipath = false;
+	struct spdk_bdev_nvme_opts opts;
 	int rc;
 
 	ctx = calloc(1, sizeof(*ctx));
@@ -518,6 +529,14 @@ rpc_bdev_nvme_attach_controller(struct spdk_jsonrpc_request *request,
 
 		assert(ctx->req.multipath == BDEV_NVME_MP_MODE_FAILOVER ||
 		       ctx->req.multipath == BDEV_NVME_MP_MODE_MULTIPATH);
+
+		bdev_nvme_get_opts(&opts);
+		if (ctx->req.multipath == BDEV_NVME_MP_MODE_FAILOVER) {
+			if (opts.multipath_forbidden_mode == BDEV_NVME_MP_MODE_FAILOVER) {
+				spdk_jsonrpc_send_error_response_fmt(request, -EINVAL, "failover mode is forbidden\n");
+				goto cleanup;
+			}
+		}
 
 		/* The user wants to add this as a failover path or add this to create multipath. */
 		drv_opts = spdk_nvme_ctrlr_get_opts(ctrlr->ctrlr);

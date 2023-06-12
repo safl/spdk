@@ -563,7 +563,8 @@ def bdev_nvme_set_options(client, action_on_timeout=None, timeout_us=None, timeo
                           delay_cmd_submit=None, transport_retry_count=None, bdev_retry_count=None,
                           transport_ack_timeout=None, ctrlr_loss_timeout_sec=None, reconnect_delay_sec=None,
                           fast_io_fail_timeout_sec=None, disable_auto_failback=None, generate_uuids=None,
-                          transport_tos=None, nvme_error_stat=None, rdma_srq_size=None, io_path_stat=None):
+                          transport_tos=None, nvme_error_stat=None, rdma_srq_size=None, io_path_stat=None,
+                          multipath_forbidden_mode=None):
     """Set options for the bdev nvme. This is startup command.
 
     Args:
@@ -608,6 +609,7 @@ def bdev_nvme_set_options(client, action_on_timeout=None, timeout_us=None, timeo
         nvme_error_stat: Enable collecting NVMe error counts. (optional)
         rdma_srq_size: Set the size of a shared rdma receive queue. Default: 0 (disabled) (optional)
         io_path_stat: Enable collection I/O path stat of each io path. (optional)
+        multipath_forbidden_mode: Set the forbidden multipath mode. Valid values are: failover (optional)
 
     """
     params = {}
@@ -687,6 +689,9 @@ def bdev_nvme_set_options(client, action_on_timeout=None, timeout_us=None, timeo
 
     if io_path_stat is not None:
         params['io_path_stat'] = io_path_stat
+
+    if multipath_forbidden_mode is not None:
+        params['multipath_forbidden_mode'] = multipath_forbidden_mode
 
     return client.call('bdev_nvme_set_options', params)
 

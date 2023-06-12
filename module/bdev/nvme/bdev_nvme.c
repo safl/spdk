@@ -128,6 +128,7 @@ static struct spdk_bdev_nvme_opts g_opts = {
 	.transport_tos = 0,
 	.nvme_error_stat = false,
 	.io_path_stat = false,
+	.multipath_forbidden_mode = BDEV_NVME_MP_MODE_DISABLE,
 };
 
 #define NVME_HOTPLUG_POLL_PERIOD_MAX			10000000ULL

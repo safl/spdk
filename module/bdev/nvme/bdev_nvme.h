@@ -33,6 +33,12 @@ enum bdev_nvme_multipath_selector {
 	BDEV_NVME_MP_SELECTOR_QUEUE_DEPTH,
 };
 
+enum bdev_nvme_multipath_mode {
+	BDEV_NVME_MP_MODE_FAILOVER,
+	BDEV_NVME_MP_MODE_MULTIPATH,
+	BDEV_NVME_MP_MODE_DISABLE,
+};
+
 typedef void (*spdk_bdev_create_nvme_fn)(void *ctx, size_t bdev_count, int rc);
 typedef void (*spdk_bdev_nvme_start_discovery_fn)(void *ctx, int status);
 typedef void (*spdk_bdev_nvme_stop_discovery_fn)(void *ctx);
@@ -294,6 +300,8 @@ struct spdk_bdev_nvme_opts {
 	bool nvme_error_stat;
 	uint32_t rdma_srq_size;
 	bool io_path_stat;
+	/* The forbidden multipath mode */
+	enum bdev_nvme_multipath_mode multipath_forbidden_mode;
 };
 
 struct spdk_nvme_qpair *bdev_nvme_get_io_qpair(struct spdk_io_channel *ctrlr_io_ch);
