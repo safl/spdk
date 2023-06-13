@@ -76,7 +76,7 @@ static struct spdk_spinlock g_stats_lock;
 
 static const char *g_opcode_strings[ACCEL_OPC_LAST] = {
 	"copy", "fill", "dualcast", "compare", "crc32c", "copy_crc32c",
-	"compress", "decompress", "encrypt", "decrypt", "xor"
+	"compress", "decompress", "encrypt", "decrypt", "xor", "dif_check"
 };
 
 enum accel_sequence_state {

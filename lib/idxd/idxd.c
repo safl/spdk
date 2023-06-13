@@ -1284,6 +1284,107 @@ spdk_idxd_submit_decompress(struct spdk_idxd_io_channel *chan,
 }
 
 int
+spdk_idxd_submit_dif_check(struct spdk_idxd_io_channel *chan,
+			   struct iovec *siov, size_t siovcnt,
+			   uint32_t num_blocks, const struct spdk_dif_ctx *ctx, int flags,
+			   spdk_idxd_req_cb cb_fn, void *cb_arg)
+{
+	struct idxd_hw_desc *desc;
+	struct idxd_ops *first_op, *op;
+	uint64_t src_addr;
+	int rc, count;
+	uint64_t len, seg_len;
+	void *src;
+	size_t i;
+	uint32_t num_blocks_left;
+
+	assert(chan != NULL);
+	assert(siov != NULL);
+
+	rc = _idxd_setup_batch(chan);
+	if (rc) {
+		return rc;
+	}
+
+	count = 0;
+	op = NULL;
+	first_op = NULL;
+	num_blocks_left = num_blocks;
+	for (i = 0; i < siovcnt; i++) {
+		len = siov[i].iov_len;
+		src = siov[i].iov_base;
+
+		/* DSA can only process contiguous memory buffers, multiple of the block size */
+		if (len % ctx->block_size != 0) {
+			rc = -EINVAL;
+			goto error;
+		}
+
+		while (len > 0 && num_blocks_left > 0) {
+			if (first_op == NULL) {
+				rc = _idxd_prep_batch_cmd(chan, cb_fn, cb_arg, flags, &desc, &op);
+				if (rc) {
+					goto error;
+				}
+
+				first_op = op;
+			} else {
+				rc = _idxd_prep_batch_cmd(chan, NULL, NULL, flags, &desc, &op);
+				if (rc) {
+					goto error;
+				}
+
+				first_op->count++;
+				op->parent = first_op;
+			}
+
+			count++;
+
+			seg_len = len;
+			if (chan->pasid_enabled) {
+				src_addr = (uint64_t)src;
+			} else {
+				src_addr = spdk_vtophys(src, &seg_len);
+				if (src_addr == SPDK_VTOPHYS_ERROR) {
+					SPDK_ERRLOG("Error translating address\n");
+					rc = -EFAULT;
+					goto error;
+				}
+			}
+
+			seg_len = spdk_min(seg_len, len);
+
+			/* TODO For now, assume the physical memory buffer is also a multiple of block size */
+			assert(seg_len % ctx->block_size == 0);
+
+			desc->opcode = IDXD_OPCODE_DIF_CHECK;
+			desc->src_addr = src_addr;
+			/* Generic flags */
+			/* desc->flags = */
+			desc->xfer_size = seg_len;
+			/* DIF flags */
+			desc->dif_chk.flags = IDXD_DIF_FLAG_DIF_BLOCK_SIZE_512;
+			/* Source DIF flags */
+			/* TODO consider setting the F detection flags for consistency with the sw dif utility */
+			/* desc->dif_chk.src_flags = */
+			desc->dif_chk.app_tag_seed = ctx->app_tag;
+			desc->dif_chk.app_tag_mask = ~ctx->apptag_mask;
+			desc->dif_chk.ref_tag_seed = (uint32_t)ctx->init_ref_tag;
+
+			len -= seg_len;
+			src += seg_len;
+			num_blocks_left -= (seg_len / ctx->block_size);
+		}
+	}
+
+	return _idxd_flush_batch(chan);
+
+error:
+	chan->batch->index -= count;
+	return rc;
+}
+
+int
 spdk_idxd_submit_raw_desc(struct spdk_idxd_io_channel *chan,
 			  struct idxd_hw_desc *_desc,
 			  spdk_idxd_req_cb cb_fn, void *cb_arg)

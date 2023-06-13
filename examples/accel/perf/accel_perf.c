@@ -82,6 +82,8 @@ struct ap_task {
 	struct ap_compress_seg *cur_seg;
 	struct worker_thread	*worker;
 	int			expected_status; /* used for the compare operation */
+	uint32_t		num_blocks; /* used for the DIF related operations */
+	struct spdk_dif_ctx		dif_ctx;
 	TAILQ_ENTRY(ap_task)	link;
 };
 
@@ -315,6 +317,8 @@ _get_task_data_bufs(struct ap_task *task)
 	uint32_t align = 0;
 	uint32_t i = 0;
 	int dst_buff_len = g_xfer_size_bytes;
+	struct spdk_dif_ctx_init_ext_opts dif_opts;
+	int rc;
 
 	/* For dualcast, the DSA HW requires 4K alignment on destination addresses but
 	 * we do this for all modules to keep it simple.
@@ -423,6 +427,28 @@ _get_task_data_bufs(struct ap_task *task)
 			return -ENOMEM;
 		}
 		memset(task->dst2, ~DATA_PATTERN, g_xfer_size_bytes);
+	}
+
+	if (g_workload_selection == ACCEL_OPC_DIF_CHECK) {
+		dif_opts.size = SPDK_SIZEOF(&dif_opts, dif_pi_format);
+		dif_opts.dif_pi_format = SPDK_DIF_PI_FORMAT_16;
+
+		task->num_blocks  = (g_xfer_size_bytes * g_chained_count) / 520;
+
+		rc = spdk_dif_ctx_init(&(task->dif_ctx), 512 + 8, 8, true, true,
+				       SPDK_DIF_TYPE1,
+				       SPDK_DIF_FLAGS_GUARD_CHECK | SPDK_DIF_FLAGS_APPTAG_CHECK | SPDK_DIF_FLAGS_REFTAG_CHECK,
+				       0x123, 0xFFFF, 0x234, 0, 0, &dif_opts);
+		if (rc != 0) {
+			fprintf(stderr, "Initialization of DIF context failed\n");
+			return rc;
+		}
+
+		rc = spdk_dif_generate(task->src_iovs, task->src_iovcnt, task->num_blocks, &(task->dif_ctx));
+		if (rc != 0) {
+			fprintf(stderr, "Generation of DIF failed\n");
+			return rc;
+		}
 	}
 
 	return 0;

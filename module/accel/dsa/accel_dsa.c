@@ -176,6 +176,12 @@ _process_single_task(struct spdk_io_channel *ch, struct spdk_accel_task *task)
 						  task->seed, task->crc_dst, flags,
 						  dsa_done, idxd_task);
 		break;
+	case ACCEL_OPC_DIF_CHECK:
+		rc = spdk_idxd_submit_dif_check(chan->chan,
+						task->s.iovs, task->s.iovcnt,
+						task->dif.num_blocks, task->dif.ctx, flags,
+						dsa_done, idxd_task);
+		break;
 	default:
 		assert(false);
 		rc = -EINVAL;
@@ -288,6 +294,7 @@ dsa_supports_opcode(enum accel_opcode opc)
 	case ACCEL_OPC_COMPARE:
 	case ACCEL_OPC_CRC32C:
 	case ACCEL_OPC_COPY_CRC32C:
+	case ACCEL_OPC_DIF_CHECK:
 		return true;
 	default:
 		return false;
