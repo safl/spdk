@@ -735,7 +735,7 @@ def bdev_nvme_attach_controller(client, name, trtype, traddr, adrfam=None, trsvc
         hdgst: Enable TCP header digest (optional)
         ddgst: Enable TCP data digest (optional)
         fabrics_timeout: Fabrics connect timeout in us (optional)
-        multipath: The behavior when multiple paths are created ("disable", "failover", or "multipath"; failover if not specified)
+        multipath: The behavior when multiple paths are created ("disable", "failover", "multipath" or "standby"; failover if not specified)
         num_io_queues: The number of IO queues to request during initialization. (optional)
         ctrlr_loss_timeout_sec: Time to wait until ctrlr is reconnected before deleting ctrlr.
         -1 means infinite reconnect retries. 0 means no reconnect retry.

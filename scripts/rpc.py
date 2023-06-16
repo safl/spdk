@@ -715,7 +715,7 @@ if __name__ == "__main__":
     p.add_argument('-d', '--ddgst',
                    help='Enable TCP data digest.', action='store_true')
     p.add_argument('--fabrics-timeout', type=int, help='Fabrics connect timeout in microseconds')
-    p.add_argument('-x', '--multipath', help='Set multipath behavior (disable, failover, multipath)')
+    p.add_argument('-x', '--multipath', help='Set multipath behavior (disable, failover, multipath, standby)')
     p.add_argument('--num-io-queues', type=int, help='Set the number of IO queues to request during initialization.')
     p.add_argument('-l', '--ctrlr-loss-timeout-sec',
                    help="""Time to wait until ctrlr is reconnected before deleting ctrlr.

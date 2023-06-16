@@ -33,6 +33,13 @@ enum bdev_nvme_multipath_selector {
 	BDEV_NVME_MP_SELECTOR_QUEUE_DEPTH,
 };
 
+enum bdev_nvme_multipath_mode {
+	BDEV_NVME_MP_MODE_FAILOVER,
+	BDEV_NVME_MP_MODE_MULTIPATH,
+	BDEV_NVME_MP_MODE_STANDBY,
+	BDEV_NVME_MP_MODE_DISABLE,
+};
+
 typedef void (*spdk_bdev_create_nvme_fn)(void *ctx, size_t bdev_count, int rc);
 typedef void (*spdk_bdev_nvme_start_discovery_fn)(void *ctx, int status);
 typedef void (*spdk_bdev_nvme_stop_discovery_fn)(void *ctx);
@@ -63,6 +70,7 @@ struct nvme_async_probe_ctx {
 	bool ctrlr_attached;
 	bool probe_done;
 	bool namespaces_populated;
+	bool standby_after_attached;
 };
 
 struct nvme_ns {
@@ -162,6 +170,7 @@ struct nvme_bdev_ctrlr {
 	char				*name;
 	TAILQ_HEAD(, nvme_ctrlr)	ctrlrs;
 	TAILQ_HEAD(, nvme_bdev)		bdevs;
+	bool				in_failover;
 	TAILQ_ENTRY(nvme_bdev_ctrlr)	tailq;
 };
 
@@ -314,7 +323,7 @@ int bdev_nvme_create(struct spdk_nvme_transport_id *trid,
 		     void *cb_ctx,
 		     struct spdk_nvme_ctrlr_opts *drv_opts,
 		     struct nvme_ctrlr_opts *bdev_opts,
-		     bool multipath);
+		     enum bdev_nvme_multipath_mode multipath);
 
 int bdev_nvme_start_discovery(struct spdk_nvme_transport_id *trid, const char *base_name,
 			      struct spdk_nvme_ctrlr_opts *drv_opts, struct nvme_ctrlr_opts *bdev_opts,

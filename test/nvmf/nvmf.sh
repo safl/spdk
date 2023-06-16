@@ -90,6 +90,7 @@ run_test "nvmf_identify" $rootdir/test/nvmf/host/identify.sh "${TEST_ARGS[@]}"
 run_test "nvmf_perf" $rootdir/test/nvmf/host/perf.sh "${TEST_ARGS[@]}"
 run_test "nvmf_fio_host" $rootdir/test/nvmf/host/fio.sh "${TEST_ARGS[@]}"
 run_test "nvmf_failover" $rootdir/test/nvmf/host/failover.sh "${TEST_ARGS[@]}"
+run_test "nvmf_multipath_standby" $rootdir/test/nvmf/host/multipath_standby.sh "${TEST_ARGS[@]}"
 run_test "nvmf_discovery" $rootdir/test/nvmf/host/discovery.sh "${TEST_ARGS[@]}"
 run_test "nvmf_discovery_remove_ifc" $rootdir/test/nvmf/host/discovery_remove_ifc.sh "${TEST_ARGS[@]}"
 # TODO: disabled due to intermittent failures (RDMA_CM_EVENT_UNREACHABLE/ETIMEDOUT)

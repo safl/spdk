@@ -6,6 +6,13 @@
 
 Added `caw_iov` field to struct `spdk_scsi_task` to support SBC-3 compare_and_write IO.
 
+### bdev_nvme
+
+Supported to attach a standby controller when specifying "-x standby" using rpc bdev_nvme_attach_controller.
+The controller is disabled after being attached. Currently standby mode is not allowed to coexist with
+failover or multipath mode. If current controller fails, it will failover to a standby controller through
+disabling current controller and enabling a standby controller.
+
 ## v23.09
 
 ### accel

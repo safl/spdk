@@ -188,8 +188,12 @@ static void bdev_nvme_abort(struct nvme_bdev_channel *nbdev_ch,
 static void bdev_nvme_reset_io(struct nvme_bdev_channel *nbdev_ch, struct nvme_bdev_io *bio);
 static int bdev_nvme_reset_ctrlr(struct nvme_ctrlr *nvme_ctrlr);
 static int bdev_nvme_failover_ctrlr(struct nvme_ctrlr *nvme_ctrlr, bool remove);
+static int bdev_nvme_delete_ctrlr_unsafe(struct nvme_ctrlr *nvme_ctrlr, bool hotplug);
+static void _nvme_ctrlr_destruct(void *ctx);
 static void remove_cb(void *cb_ctx, struct spdk_nvme_ctrlr *ctrlr);
 static int nvme_ctrlr_read_ana_log_page(struct nvme_ctrlr *nvme_ctrlr);
+
+static int nvme_bdev_ctrlr_failover(struct nvme_ctrlr *nvme_ctrlr, bool remove);
 
 static struct nvme_ns *nvme_ns_alloc(void);
 static void nvme_ns_free(struct nvme_ns *ns);
@@ -940,6 +944,10 @@ _bdev_nvme_find_io_path(struct nvme_bdev_channel *nbdev_ch)
 
 	start = nvme_io_path_get_next(nbdev_ch, nbdev_ch->current_io_path);
 
+	if (spdk_unlikely(start == NULL)) {
+		return NULL;
+	}
+
 	io_path = start;
 	do {
 		if (spdk_likely(nvme_qpair_is_connected(io_path->qpair) &&
@@ -1574,7 +1582,7 @@ bdev_nvme_disconnected_qpair_cb(struct spdk_nvme_qpair *qpair, void *poll_group_
 		} else {
 			/* qpair was disconnected unexpectedly. Reset controller for recovery. */
 			SPDK_NOTICELOG("qpair %p was disconnected and freed. reset controller.\n", qpair);
-			bdev_nvme_failover_ctrlr(nvme_qpair->ctrlr, false);
+			nvme_bdev_ctrlr_failover(nvme_qpair->ctrlr, false);
 		}
 	} else {
 		/* In this case, ctrlr_channel is already deleted. */
@@ -1661,7 +1669,8 @@ bdev_nvme_poll_adminq(void *arg)
 							    g_opts.nvme_adminq_poll_period_us);
 			disconnected_cb(nvme_ctrlr);
 		} else {
-			bdev_nvme_failover_ctrlr(nvme_ctrlr, false);
+			SPDK_NOTICELOG("admin qpair was disconnected. reset controller.\n");
+			nvme_bdev_ctrlr_failover(nvme_ctrlr, false);
 		}
 	} else if (spdk_nvme_ctrlr_get_admin_qp_failure_reason(nvme_ctrlr->ctrlr) !=
 		   SPDK_NVME_QPAIR_FAILURE_NONE) {
@@ -2026,6 +2035,10 @@ _bdev_nvme_reset_ctrlr_complete(struct spdk_io_channel_iter *i, int status)
 		SPDK_NOTICELOG("Resetting controller successful.\n");
 	}
 
+	pthread_mutex_lock(&g_bdev_nvme_mutex);
+	nvme_ctrlr->nbdev_ctrlr->in_failover = false;
+	pthread_mutex_unlock(&g_bdev_nvme_mutex);
+
 	pthread_mutex_lock(&nvme_ctrlr->mutex);
 	nvme_ctrlr->resetting = false;
 	nvme_ctrlr->dont_retry = false;
@@ -2050,7 +2063,7 @@ _bdev_nvme_reset_ctrlr_complete(struct spdk_io_channel_iter *i, int status)
 		nvme_ctrlr_disconnect(nvme_ctrlr, bdev_nvme_start_reconnect_delay_timer);
 		break;
 	case OP_FAILOVER:
-		bdev_nvme_failover_ctrlr(nvme_ctrlr, false);
+		nvme_bdev_ctrlr_failover(nvme_ctrlr, false);
 		break;
 	default:
 		break;
@@ -2864,6 +2877,152 @@ bdev_nvme_failover_ctrlr(struct nvme_ctrlr *nvme_ctrlr, bool remove)
 
 	return rc;
 }
+
+static bool
+standby_ctrlr_is_available(struct nvme_bdev_ctrlr *nbdev_ctrlr)
+{
+	struct nvme_ctrlr *nvme_ctrlr;
+
+	TAILQ_FOREACH(nvme_ctrlr, &nbdev_ctrlr->ctrlrs, tailq) {
+		if (nvme_ctrlr->disabled) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void
+nvme_bdev_ctrlr_failover_done(void *cb_arg, int rc)
+{
+	struct nvme_ctrlr *nvme_ctrlr = cb_arg;
+	struct nvme_bdev_ctrlr *nbdev_ctrlr = nvme_ctrlr->nbdev_ctrlr;
+
+	pthread_mutex_lock(&g_bdev_nvme_mutex);
+	if (nbdev_ctrlr->in_failover) {
+		nbdev_ctrlr->in_failover = false;
+	}
+	pthread_mutex_unlock(&g_bdev_nvme_mutex);
+
+	if (rc == 0) {
+		SPDK_NOTICELOG("failover succeeded.\n");
+	} else if (rc == -EBUSY) {
+		/* The controller to disable or the controller to enable is resetting, do nothing. */
+		SPDK_NOTICELOG("unable to perform failover, already in progress.\n");
+	} else {
+		SPDK_NOTICELOG("failover failed\n");
+	}
+}
+
+static void
+nvme_bdev_ctrlr_failover_continue(void *cb_arg, int rc)
+{
+	struct nvme_ctrlr *nvme_ctrlr = cb_arg, *next_nvme_ctrlr;
+	struct nvme_bdev_ctrlr *nbdev_ctrlr;
+	int _rc = 0;
+
+	if (rc != 0 && rc != -ENXIO) {
+		/* If the controller is destructing, continue to enable the next controller;
+		 * If the ctrlr is resetting, don't continue.
+		 */
+		_rc = rc;
+		goto done;
+	}
+
+	nbdev_ctrlr = nvme_ctrlr->nbdev_ctrlr;
+
+	/* Disable succeeds or already disabled or the controller is destructed or destructing,
+	 * put the controller to the tail of ctrlrs list.
+	 */
+	pthread_mutex_lock(&g_bdev_nvme_mutex);
+	TAILQ_REMOVE(&nbdev_ctrlr->ctrlrs, nvme_ctrlr, tailq);
+	TAILQ_INSERT_TAIL(&nbdev_ctrlr->ctrlrs, nvme_ctrlr, tailq);
+
+	next_nvme_ctrlr = TAILQ_FIRST(&nbdev_ctrlr->ctrlrs);
+	pthread_mutex_unlock(&g_bdev_nvme_mutex);
+
+	_rc = nvme_ctrlr_op(next_nvme_ctrlr, NVME_CTRLR_OP_ENABLE, nvme_bdev_ctrlr_failover_done,
+			    next_nvme_ctrlr);
+	if (_rc == 0) {
+		return;
+	} else if (_rc == -EALREADY) {
+		_rc = 0;
+	}
+
+done:
+	nvme_bdev_ctrlr_failover_done(nvme_ctrlr, _rc);
+}
+
+static int
+_nvme_bdev_ctrlr_failover(struct nvme_ctrlr *nvme_ctrlr, bool remove)
+{
+	spdk_msg_fn msg_fn;
+	int rc = 0;
+
+	assert(nvme_ctrlr != NULL);
+
+	if (!remove) {
+		rc = nvme_ctrlr_op(nvme_ctrlr, NVME_CTRLR_OP_DISABLE, nvme_bdev_ctrlr_failover_continue,
+				   nvme_ctrlr);
+		if (rc == 0) {
+			return 0;
+		} else if (rc == -EALREADY) {
+			rc = 0;
+		}
+	} else {
+		msg_fn = _nvme_ctrlr_destruct;
+		rc = bdev_nvme_delete_ctrlr_unsafe(nvme_ctrlr, false);
+		if (rc == 0) {
+			spdk_thread_send_msg(nvme_ctrlr->thread, msg_fn, nvme_ctrlr);
+		}
+		/* For destruct case, we always try to enable next controller. */
+		rc = 0;
+	}
+
+	nvme_bdev_ctrlr_failover_continue(nvme_ctrlr, rc);
+
+	return rc;
+}
+
+static int
+nvme_bdev_ctrlr_failover(struct nvme_ctrlr *nvme_ctrlr, bool remove)
+{
+	struct nvme_bdev_ctrlr *nbdev_ctrlr;
+	struct nvme_path_id *path_id, *next_path;
+	bool exist_standby = false;
+
+	nbdev_ctrlr = nvme_ctrlr->nbdev_ctrlr;
+
+	SPDK_NOTICELOG("Start failover\n");
+	pthread_mutex_lock(&g_bdev_nvme_mutex);
+	if (nbdev_ctrlr->in_failover) {
+		pthread_mutex_unlock(&g_bdev_nvme_mutex);
+		SPDK_NOTICELOG("failover is already in progress\n");
+		return -EBUSY;
+	}
+	nbdev_ctrlr->in_failover = true;
+
+	if (standby_ctrlr_is_available(nbdev_ctrlr)) {
+		exist_standby = true;
+	}
+	pthread_mutex_unlock(&g_bdev_nvme_mutex);
+
+	pthread_mutex_lock(&nvme_ctrlr->mutex);
+	path_id = TAILQ_FIRST(&nvme_ctrlr->trids);
+	assert(path_id);
+	next_path = TAILQ_NEXT(path_id, link);
+	pthread_mutex_unlock(&nvme_ctrlr->mutex);
+
+	/* If there exist other trids for this controller or there is no other controller,
+	 * try another path or reset the controller. Or else, we choost another controller.
+	 */
+	if (next_path || !exist_standby) {
+		return	bdev_nvme_failover_ctrlr(nvme_ctrlr, remove);
+	}
+
+	return _nvme_bdev_ctrlr_failover(nvme_ctrlr, remove);
+}
+
 
 static int bdev_nvme_unmap(struct nvme_bdev_io *bio, uint64_t offset_blocks,
 			   uint64_t num_blocks);
@@ -5074,7 +5233,7 @@ aer_cb(void *arg, const struct spdk_nvme_cpl *cpl)
 }
 
 static void
-populate_namespaces_cb(struct nvme_async_probe_ctx *ctx, int rc)
+populate_namespaces_done(struct nvme_async_probe_ctx *ctx, int rc)
 {
 	if (ctx->cb_fn) {
 		ctx->cb_fn(ctx->cb_ctx, ctx->reported_bdevs, rc);
@@ -5087,6 +5246,44 @@ populate_namespaces_cb(struct nvme_async_probe_ctx *ctx, int rc)
 		 * send additional commands to the SSD after attach.
 		 */
 		free(ctx);
+	}
+}
+
+static void
+nvme_ctrlr_go_standby_cb(void *cb_arg, int rc)
+{
+	struct nvme_async_probe_ctx *ctx = cb_arg;
+
+	populate_namespaces_done(ctx, rc);
+
+	/* TODO: if disable failed, need to destruct this nvme_ctrlr? */
+}
+
+static void
+nvme_ctrlr_go_standby(struct nvme_ctrlr *nvme_ctrlr, void *ctx)
+{
+	int rc;
+
+	assert(nvme_ctrlr != NULL);
+	assert(!nvme_ctrlr->destruct);
+	assert(!nvme_ctrlr->resetting);
+	assert(!nvme_ctrlr->disabled);
+
+	rc = nvme_ctrlr_op(nvme_ctrlr, NVME_CTRLR_OP_DISABLE, nvme_ctrlr_go_standby_cb, ctx);
+	if (rc == 0) {
+		return;
+	}
+
+	nvme_ctrlr_go_standby_cb(ctx, rc);
+}
+
+static void
+populate_namespaces_cb(struct nvme_ctrlr *nvme_ctrlr, struct nvme_async_probe_ctx *ctx, int rc)
+{
+	if (!ctx->standby_after_attached || rc != 0) {
+		populate_namespaces_done(ctx, rc);
+	} else {/* make the nvme_ctrlr standby */
+		nvme_ctrlr_go_standby(nvme_ctrlr, ctx);
 	}
 }
 
@@ -5116,7 +5313,7 @@ nvme_ctrlr_init_ana_log_page_done(void *_ctx, const struct spdk_nvme_cpl *cpl)
 
 		if (ctx != NULL) {
 			ctx->reported_bdevs = 0;
-			populate_namespaces_cb(ctx, -1);
+			populate_namespaces_cb(nvme_ctrlr, ctx, -1);
 		}
 		return;
 	}
@@ -5609,7 +5806,7 @@ nvme_ctrlr_populate_namespaces_done(struct nvme_ctrlr *nvme_ctrlr,
 
 	if (ctx->names == NULL) {
 		ctx->reported_bdevs = 0;
-		populate_namespaces_cb(ctx, 0);
+		populate_namespaces_cb(nvme_ctrlr, ctx, 0);
 		return;
 	}
 
@@ -5628,7 +5825,7 @@ nvme_ctrlr_populate_namespaces_done(struct nvme_ctrlr *nvme_ctrlr,
 			SPDK_ERRLOG("Maximum number of namespaces supported per NVMe controller is %du. Unable to return all names of created bdevs\n",
 				    ctx->max_bdevs);
 			ctx->reported_bdevs = 0;
-			populate_namespaces_cb(ctx, -ERANGE);
+			populate_namespaces_cb(nvme_ctrlr, ctx, -ERANGE);
 			return;
 		}
 
@@ -5636,7 +5833,7 @@ nvme_ctrlr_populate_namespaces_done(struct nvme_ctrlr *nvme_ctrlr,
 	}
 
 	ctx->reported_bdevs = j;
-	populate_namespaces_cb(ctx, 0);
+	populate_namespaces_cb(nvme_ctrlr, ctx, 0);
 }
 
 static int
@@ -5787,7 +5984,7 @@ connect_attach_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 	rc = nvme_ctrlr_create(ctrlr, ctx->base_name, &ctx->trid, ctx);
 	if (rc != 0) {
 		ctx->reported_bdevs = 0;
-		populate_namespaces_cb(ctx, rc);
+		populate_namespaces_cb(NULL, ctx, rc);
 	}
 }
 
@@ -5812,7 +6009,7 @@ connect_set_failover_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 	}
 
 	ctx->reported_bdevs = 0;
-	populate_namespaces_cb(ctx, rc);
+	populate_namespaces_cb(nvme_ctrlr, ctx, rc);
 }
 
 static int
@@ -5832,7 +6029,7 @@ bdev_nvme_async_poll(void *arg)
 			 * will take care of freeing the nvme_async_probe_ctx.
 			 */
 			ctx->reported_bdevs = 0;
-			populate_namespaces_cb(ctx, -EIO);
+			populate_namespaces_cb(NULL, ctx, -EIO);
 		} else if (ctx->namespaces_populated) {
 			/* The namespaces for the attached controller were all
 			 * populated and the response was already sent to the
@@ -5895,7 +6092,7 @@ bdev_nvme_create(struct spdk_nvme_transport_id *trid,
 		 void *cb_ctx,
 		 struct spdk_nvme_ctrlr_opts *drv_opts,
 		 struct nvme_ctrlr_opts *bdev_opts,
-		 bool multipath)
+		 enum bdev_nvme_multipath_mode multipath)
 {
 	struct nvme_probe_skip_entry	*entry, *tmp;
 	struct nvme_async_probe_ctx	*ctx;
@@ -5955,11 +6152,14 @@ bdev_nvme_create(struct spdk_nvme_transport_id *trid,
 	ctx->drv_opts.disable_read_ana_log_page = true;
 	ctx->drv_opts.transport_tos = g_opts.transport_tos;
 
-	if (nvme_bdev_ctrlr_get_by_name(base_name) == NULL || multipath) {
+	if (nvme_bdev_ctrlr_get_by_name(base_name) == NULL || multipath == BDEV_NVME_MP_MODE_MULTIPATH ||
+	    multipath == BDEV_NVME_MP_MODE_STANDBY) {
 		attach_cb = connect_attach_cb;
 	} else {
 		attach_cb = connect_set_failover_cb;
 	}
+
+	ctx->standby_after_attached = (multipath == BDEV_NVME_MP_MODE_STANDBY) ? true : false;
 
 	ctx->probe_ctx = spdk_nvme_connect_async(trid, &ctx->drv_opts, attach_cb);
 	if (ctx->probe_ctx == NULL) {
@@ -6097,6 +6297,16 @@ bdev_nvme_delete_complete_poll(void *arg)
 	return SPDK_POLLER_BUSY;
 }
 
+
+
+static void
+_nvme_bdev_ctrlr_failover_remove(void *ctx)
+{
+	struct nvme_ctrlr *nvme_ctrlr = ctx;
+
+	_nvme_bdev_ctrlr_failover(nvme_ctrlr, true);
+}
+
 static int
 _bdev_nvme_delete(struct nvme_ctrlr *nvme_ctrlr, const struct nvme_path_id *path_id)
 {
@@ -6131,14 +6341,25 @@ _bdev_nvme_delete(struct nvme_ctrlr *nvme_ctrlr, const struct nvme_path_id *path
 	/* This is the active path in use right now. The active path is always the first in the list. */
 	assert(p == nvme_ctrlr->active_path_id);
 
-	if (!TAILQ_NEXT(p, link)) {
-		/* The current path is the only path. */
-		msg_fn = _nvme_ctrlr_destruct;
-		rc = bdev_nvme_delete_ctrlr_unsafe(nvme_ctrlr, false);
-	} else {
+	if (TAILQ_NEXT(p, link)) {
 		/* There is an alternative path. */
 		msg_fn = _bdev_nvme_reset_ctrlr;
 		rc = bdev_nvme_failover_ctrlr_unsafe(nvme_ctrlr, true);
+	} else {
+		if (standby_ctrlr_is_available(nvme_ctrlr->nbdev_ctrlr) && !nvme_ctrlr->disabled) {
+			/* delete an active controller and there exists standby controllers */
+			msg_fn = _nvme_bdev_ctrlr_failover_remove;
+			if (nvme_ctrlr->nbdev_ctrlr->in_failover) {
+				rc = -EBUSY;
+			} else {
+				nvme_ctrlr->nbdev_ctrlr->in_failover = true;
+				rc = 0;
+			}
+		} else {
+			/* delete a standby controller or delete an active controller with no standby controller available, or for multipath case */
+			msg_fn = _nvme_ctrlr_destruct;
+			rc = bdev_nvme_delete_ctrlr_unsafe(nvme_ctrlr, false);
+		}
 	}
 
 	pthread_mutex_unlock(&nvme_ctrlr->mutex);
