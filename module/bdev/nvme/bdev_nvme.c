@@ -870,11 +870,7 @@ nvme_ctrlr_is_failed(struct nvme_ctrlr *nvme_ctrlr)
 	}
 
 	if (nvme_ctrlr->resetting) {
-		if (nvme_ctrlr->opts.reconnect_delay_sec != 0) {
-			return false;
-		} else {
-			return true;
-		}
+		return false;
 	}
 
 	if (nvme_ctrlr->reconnect_is_delayed) {
