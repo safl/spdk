@@ -85,7 +85,11 @@ xor_gen_basic(void *dest, void **sources, uint32_t n, uint32_t len)
 }
 
 #ifdef SPDK_CONFIG_ISAL
+#ifndef SPDK_CONFIG_ISAL_PKG_CONFIG
 #include "isa-l/include/raid.h"
+#else
+#include <isa-l/raid.h>
+#endif
 
 #define SPDK_XOR_BUF_ALIGN 32
 

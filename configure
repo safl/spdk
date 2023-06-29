@@ -62,6 +62,8 @@ function usage() {
 	echo " --without-idxd            Disabled while experimental. Only built for x86 when enabled."
 	echo " --with-crypto             Build isa-l-crypto and vbdev crypto module. No path required."
 	echo " --without-crypto          Disable isa-l-crypto and vbdev crypto module."
+	echo " --with-system-isal        Build against a system isa-l version. By default, the isa-l"
+	echo "                           submodule in spdk tree will be used."
 	echo " --with-fio[=DIR]          Build fio_plugin."
 	echo " --without-fio             default: /usr/src/fio"
 	echo " --with-xnvme              Build xNVMe bdev module."
@@ -427,6 +429,21 @@ for i in "$@"; do
 			;;
 		--without-dpdk)
 			CONFIG[DPDK_DIR]=
+			;;
+		--with-system-isal)
+			if command -v "pkg-config" > /dev/null 2>&1 && pkg-config --exists libisal; then
+				isal_libdir=$(pkg-config --variable=libdir libisal)
+				isal_libdir=$(readlink -f $isal_libdir)
+				isal_incdir=$(pkg-config --variable=includedir libisal)
+				echo "Using isa-l lib dir $isal_libdir"
+				CONFIG[ISAL_LIB_DIR]=$isal_libdir
+				CONFIG[ISAL_INC_DIR]=$isal_incdir
+				CONFIG[ISAL_PKG_CONFIG]=y
+				CFLAGS="${CFLAGS:+$CFLAGS }$(pkg-config --cflags libisal)"
+			else
+				echo "libisal.pc not found, aborting"
+				exit 1
+			fi
 			;;
 		--with-wpdk=*)
 			check_dir "$i"
@@ -1164,63 +1181,68 @@ if [[ "${CONFIG[FUZZER]}" = "y" && "$CC_TYPE" != "clang" ]]; then
 	exit 1
 fi
 
-if [[ $arch == x86_64* ]] || [[ $arch == aarch64* ]]; then
+if [[ "${CONFIG[ISAL_PKG_CONFIG]}" = "y" ]]; then
+	echo "Using system ISA-L"
 	CONFIG[ISAL]=y
-	# make sure the submodule is initialized
-	if [ ! -f "$rootdir"/isa-l/autogen.sh ]; then
-		echo "ISA-L is required but was not found, please init the submodule with:"
-		echo "  git submodule update --init"
-		echo "and then re-run this script."
-		exit 1
-	fi
-	# for x86 only, check the nasm version for ISA-L and IPSEC
-	if [[ $arch == x86_64* ]]; then
-		ver=$(nasm -v 2> /dev/null | awk '{print $3}' | awk -Fr '{print $1}')
-		if lt "$ver" 2.14; then
-			CONFIG[ISAL]=n
-			# IPSEC has nasm requirement and DPDK crypto relies on IPSEC
-			CONFIG[IPSEC_MB]=n
-			echo "WARNING: ISA-L & DPDK crypto cannot be used as nasm ver must be 2.14 or newer."
-		fi
-	fi
-	# check gas version on aarch64
-	if [[ $arch == aarch64* ]]; then
-		ver=$(as --version 2> /dev/null | awk '/GNU assembler/{print $NF}')
-		if lt "$ver" 2.24; then
-			# ISA-L, compression & crypto require gas version 2.24 or newer.
-			CONFIG[ISAL]=n
-			echo "Notice: ISA-L, compression & crypto require GAS version 2.24 or newer. Turning off default ISA-L and crypto features."
-		elif lt "$ver" 2.34; then
-			#For gas v2.24~v2.34, sve2 instructions are not supported. To workaround it, sve2 optimization should be disabled
-			ISAL_CRYPTO_OPTS+=("--disable-sve2")
-		fi
-	fi
 else
-	# for PPC
-	CONFIG[ISAL]=n
-	echo "WARNING: ISA-L cannot be used due to architecture incompatibility."
-fi
-
-# now either configure ISA-L or disable unavailable features
-if [[ "${CONFIG[ISAL]}" = "y" ]]; then
-	cd $rootdir/isa-l
-	ISAL_LOG=$rootdir/isa-l/spdk-isal.log
-	if [[ -n "${CONFIG[CROSS_PREFIX]}" ]]; then
-		ISAL_OPTS=("--host=${CONFIG[CROSS_PREFIX]}")
+	if [[ $arch == x86_64* ]] || [[ $arch == aarch64* ]]; then
+		CONFIG[ISAL]=y
+		# make sure the submodule is initialized
+		if [ ! -f "$rootdir"/isa-l/autogen.sh ]; then
+			echo "ISA-L is required but was not found, please init the submodule with:"
+			echo "  git submodule update --init"
+			echo "and then re-run this script."
+			exit 1
+		fi
+		# for x86 only, check the nasm version for ISA-L and IPSEC
+		if [[ $arch == x86_64* ]]; then
+			ver=$(nasm -v 2> /dev/null | awk '{print $3}' | awk -Fr '{print $1}')
+			if lt "$ver" 2.14; then
+				CONFIG[ISAL]=n
+				# IPSEC has nasm requirement and DPDK crypto relies on IPSEC
+				CONFIG[IPSEC_MB]=n
+				echo "WARNING: ISA-L & DPDK crypto cannot be used as nasm ver must be 2.14 or newer."
+			fi
+		fi
+		# check gas version on aarch64
+		if [[ $arch == aarch64* ]]; then
+			ver=$(as --version 2> /dev/null | awk '/GNU assembler/{print $NF}')
+			if lt "$ver" 2.24; then
+				# ISA-L, compression & crypto require gas version 2.24 or newer.
+				CONFIG[ISAL]=n
+				echo "Notice: ISA-L, compression & crypto require GAS version 2.24 or newer. Turning off default ISA-L and crypto features."
+			elif lt "$ver" 2.34; then
+				#For gas v2.24~v2.34, sve2 instructions are not supported. To workaround it, sve2 optimization should be disabled
+				ISAL_CRYPTO_OPTS+=("--disable-sve2")
+			fi
+		fi
 	else
-		ISAL_OPTS=()
+		# for PPC
+		CONFIG[ISAL]=n
+		echo "WARNING: ISA-L cannot be used due to architecture incompatibility."
 	fi
-	echo -n "Configuring ISA-L (logfile: $ISAL_LOG)..."
-	./autogen.sh &> $ISAL_LOG
-	./configure CFLAGS="-fPIC -g -O2" "${ISAL_OPTS[@]}" --enable-shared=no >> $ISAL_LOG 2>&1
-	echo "done."
-	cd $rootdir
-else
-	echo "Without ISA-L, there is no software support for crypto or compression,"
-	echo "so these features will be disabled."
-	CONFIG[CRYPTO]=n
-	CONFIG[VBDEV_COMPRESS]=n
-	CONFIG[DPDK_COMPRESSDEV]=n
+
+	# now either configure ISA-L or disable unavailable features
+	if [[ "${CONFIG[ISAL]}" = "y" ]]; then
+		cd $rootdir/isa-l
+		ISAL_LOG=$rootdir/isa-l/spdk-isal.log
+		if [[ -n "${CONFIG[CROSS_PREFIX]}" ]]; then
+			ISAL_OPTS=("--host=${CONFIG[CROSS_PREFIX]}")
+		else
+			ISAL_OPTS=()
+		fi
+		echo -n "Configuring ISA-L (logfile: $ISAL_LOG)..."
+		./autogen.sh &> $ISAL_LOG
+		./configure CFLAGS="-fPIC -g -O2" "${ISAL_OPTS[@]}" --enable-shared=no >> $ISAL_LOG 2>&1
+		echo "done."
+		cd $rootdir
+	else
+		echo "Without ISA-L, there is no software support for crypto or compression,"
+		echo "so these features will be disabled."
+		CONFIG[CRYPTO]=n
+		CONFIG[VBDEV_COMPRESS]=n
+		CONFIG[DPDK_COMPRESSDEV]=n
+	fi
 fi
 
 # ISA-L-crypto complements ISA-L functionality, it is only enabled together with ISA-L

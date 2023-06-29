@@ -19,7 +19,11 @@
 #include "spdk/xor.h"
 
 #ifdef SPDK_CONFIG_ISAL
+#ifndef SPDK_CONFIG_ISAL_PKG_CONFIG
 #include "../isa-l/include/igzip_lib.h"
+#else
+#include <isa-l/igzip_lib.h>
+#endif
 #ifdef SPDK_CONFIG_ISAL_CRYPTO
 #include "../isa-l-crypto/include/aes_xts.h"
 #endif

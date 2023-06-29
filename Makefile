@@ -18,8 +18,10 @@ DIRS-$(CONFIG_EXAMPLES) += examples
 DIRS-$(CONFIG_APPS) += app
 DIRS-y += test
 DIRS-$(CONFIG_IPSEC_MB) += ipsecbuild
+ifneq ($(CONFIG_ISAL_PKG_CONFIG),y)
 DIRS-$(CONFIG_ISAL) += isalbuild
 DIRS-$(CONFIG_ISAL_CRYPTO) += isalcryptobuild
+endif
 DIRS-$(CONFIG_VFIO_USER) += vfiouserbuild
 DIRS-$(CONFIG_SMA) += proto
 DIRS-$(CONFIG_XNVME) += xnvmebuild
@@ -60,6 +62,7 @@ LIB += ipsecbuild
 DPDK_DEPS += ipsecbuild
 endif
 
+ifneq ($(CONFIG_ISAL_PKG_CONFIG),y)
 ifeq ($(CONFIG_ISAL),y)
 ISALBUILD = isalbuild
 LIB += isalbuild
@@ -67,6 +70,7 @@ DPDK_DEPS += isalbuild
 ifeq ($(CONFIG_ISAL_CRYPTO),y)
 ISALCRYPTOBUILD = isalcryptobuild
 LIB += isalcryptobuild
+endif
 endif
 endif
 
