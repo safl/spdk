@@ -165,6 +165,8 @@ export SPDK_TEST_FUZZER_TARGET
 export SPDK_TEST_NVMF_MDNS
 : ${SPDK_JSONRPC_GO_CLIENT=0}
 export SPDK_JSONRPC_GO_CLIENT
+: ${SPDK_TEST_VTUNE=0}
+export SPDK_TEST_VTUNE
 
 # always test with SPDK shared objects.
 export SPDK_LIB_DIR="$rootdir/build/lib"
@@ -237,6 +239,9 @@ export SPDK_EXAMPLE_DIR="$rootdir/build/examples"
 # for vhost, vfio-user tests
 export QEMU_BIN=${QEMU_BIN:-}
 export VFIO_QEMU_BIN=${VFIO_QEMU_BIN:-}
+
+# for VTune/ITTAPI integration test
+export VTUNE_ITTAPI_DIR=/usr/src/ittapi
 
 export AR_TOOL=$rootdir/scripts/ar-xnvme-fixer
 
@@ -412,8 +417,8 @@ function get_config_params() {
 		config_params+=" --with-fio=$CONFIG_FIO_SOURCE_DIR"
 	fi
 
-	if [ -d ${DEPENDENCY_DIR}/vtune_codes ]; then
-		config_params+=' --with-vtune='${DEPENDENCY_DIR}'/vtune_codes'
+	if [[ $SPDK_TEST_VTUNE -eq 1 && -d $VTUNE_ITTAPI_DIR ]]; then
+		config_params+=" --with-vtune=$VTUNE_ITTAPI_DIR"
 	fi
 
 	if [ -d /usr/include/iscsi ]; then

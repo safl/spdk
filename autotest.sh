@@ -186,6 +186,10 @@ if [ $SPDK_RUN_FUNCTIONAL_TEST -eq 1 ]; then
 		fi
 	fi
 
+	if [ $SPDK_TEST_VTUNE -eq 1 ]; then
+		run_test "vtune_ittapi_integration" "$rootdir/test/vtune/ittapi_refcol_integration.sh"
+	fi
+
 	if [[ $(uname -s) == Linux ]]; then
 		if [[ $SPDK_TEST_BLOCKDEV -eq 1 || $SPDK_TEST_URING -eq 1 ]]; then
 			# The crypto job also includes the SPDK_TEST_BLOCKDEV in its configuration hence the

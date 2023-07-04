@@ -79,3 +79,6 @@ core_load
 nvmf_device_removal
 nvmf_device_removal_pci_remove
 nvmf_device_removal_pci_remove_no_srq
+
+vtune_ittapi_integration
+bdevperf_workload
