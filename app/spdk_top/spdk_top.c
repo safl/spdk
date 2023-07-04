@@ -2512,9 +2512,15 @@ display_thread(uint64_t thread_id, uint8_t current_page, uint8_t active_tab,
 		pthread_mutex_unlock(&g_thread_lock);
 
 		if (check_resize_interface(active_tab, &current_page)) {
-			/* This clear is to avoid remaining artifacts after window has been moved */
-			wclear(thread_win);
-			wclear(core_popup);
+			/* This clear is to avoid remaining artifacts after window has been moved
+			"functions using a window pointer parameter return an error if it is null" */
+			if (thread_win != NULL) {
+				wclear(thread_win);
+			}
+
+			if (core_popup != NULL) {
+				wclear(core_popup);
+			}
 			resize_interface(active_tab);
 			draw_tabs(active_tab, g_current_sort_col[active_tab], g_current_sort_col2[active_tab]);
 			if (core_popup != NULL) {
@@ -2524,8 +2530,11 @@ display_thread(uint64_t thread_id, uint8_t current_page, uint8_t active_tab,
 				mvwin(core_popup, get_position_for_window(CORE_WIN_HEIGHT + threads_count, g_max_row),
 				      get_position_for_window(CORE_WIN_WIDTH, g_max_col));
 			}
-			mvwin(thread_win, get_position_for_window(THREAD_WIN_HEIGHT + pollers_count, g_max_row),
-			      get_position_for_window(THREAD_WIN_WIDTH, g_max_col));
+
+			if (thread_win != NULL) {
+				mvwin(thread_win, get_position_for_window(THREAD_WIN_HEIGHT + pollers_count, g_max_row),
+				      get_position_for_window(THREAD_WIN_WIDTH, g_max_col));
+			}
 		}
 
 		c = getch();
@@ -2548,7 +2557,10 @@ display_thread(uint64_t thread_id, uint8_t current_page, uint8_t active_tab,
 			if (core_popup != NULL) {
 				draw_core_win_content(core_popup, core_info);
 			}
-			draw_thread_win_content(thread_win, &thread_info);
+
+			if (thread_win != NULL) {
+				draw_thread_win_content(thread_win, &thread_info);
+			}
 			refresh();
 			pthread_mutex_unlock(&g_thread_lock);
 		}
