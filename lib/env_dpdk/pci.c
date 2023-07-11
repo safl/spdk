@@ -1024,8 +1024,8 @@ spdk_pci_device_claim(struct spdk_pci_device *dev)
 		return -errno;
 	}
 
-	if (ftruncate(dev_fd, sizeof(int)) != 0) {
-		SPDK_ERRLOG("could not truncate %s\n", dev_name);
+	if (fallocate(dev_fd, 0, 0, sizeof(int)) != 0) {
+		SPDK_ERRLOG("could not fallocate %s\n", dev_name);
 		close(dev_fd);
 		return -errno;
 	}
