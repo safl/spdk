@@ -676,7 +676,7 @@ class Target(Server):
         time.sleep(ramp_time)
         self.exec_cmd(["mkdir", "-p", "%s" % pcm_files_dir])
         cmd = ["pcm-memory", "1", "-csv=%s/%s" % (pcm_files_dir, pcm_file_name)]
-        pcm_memory = subprocess.Popen(cmd)
+        pcm_memory = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         time.sleep(run_time)
         pcm_memory.terminate()
 
@@ -686,18 +686,22 @@ class Target(Server):
         self.exec_cmd(["mkdir", "-p", "%s" % pcm_files_dir])
         cmd = ["pcm", "1", "-i=%s" % run_time,
                "-csv=%s/%s" % (pcm_files_dir, pcm_file_name)]
-        subprocess.run(cmd)
+        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         df = pd.read_csv(os.path.join(pcm_files_dir, pcm_file_name), header=[0, 1])
         df = df.rename(columns=lambda x: re.sub(r'Unnamed:[\w\s]*$', '', x))
         skt = df.loc[:, df.columns.get_level_values(1).isin({'UPI0', 'UPI1', 'UPI2'})]
         skt_pcm_file_name = "_".join(["skt", pcm_file_name])
         skt.to_csv(os.path.join(pcm_files_dir, skt_pcm_file_name), index=False)
 
+        if out.returncode:
+            self.log.warning("PCM Power measurement finished with a non-zero return code.")
+            self.log.warning(out.stdout.decode(encoding="utf-8"))
+
     def measure_pcm_power(self, results_dir, pcm_power_file_name, ramp_time, run_time):
         pcm_files_dir = os.path.join(results_dir, "pcm_output")
         time.sleep(ramp_time)
         self.exec_cmd(["mkdir", "-p", "%s" % pcm_files_dir])
-        out = self.exec_cmd(["pcm-power", "1", "-i=%s" % run_time])
+        out = self.exec_cmd(["pcm-power", "1", "-silent", "-i=%s" % run_time], stderr_redirect=True)
         with open(os.path.join(pcm_files_dir, pcm_power_file_name), "w") as fh:
             fh.write(out)
         # TODO: Above command results in a .csv file containing measurements for all gathered samples.
