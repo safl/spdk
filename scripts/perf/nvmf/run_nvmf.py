@@ -65,7 +65,8 @@ class Server(ABC):
             ConfigField(name='mode', required=True),
             ConfigField(name='irq_scripts_dir', default='/usr/src/local/mlnx-tools/ofed_scripts'),
             ConfigField(name='enable_arfs', default=False),
-            ConfigField(name='tuned_profile', default='')
+            ConfigField(name='tuned_profile', default=''),
+            ConfigField(name='enable_sar', default=True)
         ]
         self.read_config(config_fields, server_config)
 
@@ -518,6 +519,37 @@ class Server(ABC):
         if self.enable_adq:
             self.reload_driver("ice")
 
+    def measure_sar(self, results_dir, sar_file_prefix, ramp_time, run_time):
+        cpu_number = int(self.exec_cmd(["nproc"]))
+        sar_idle_sum = 0
+        sar_files_dir = os.path.join(results_dir, "sar_output")
+        sar_output_file = os.path.join(sar_files_dir, sar_file_prefix + ".txt")
+        sar_cpu_util_file = os.path.join(sar_files_dir, ".".join([sar_file_prefix + "_cpu_util", "txt"]))
+
+        self.log.info("Waiting %d seconds for ramp-up to finish before measuring SAR stats" % ramp_time)
+        time.sleep(ramp_time)
+        self.log.info("Starting SAR measurements")
+
+        self.exec_cmd(["mkdir", "-p", "%s" % sar_files_dir])
+        out = self.exec_cmd(["sar", "-P", "ALL", "%s" % 1, "%s" % run_time])
+
+        for line in out.split("\n"):
+            if "Average" in line:
+                if "CPU" in line:
+                    self.log.info("Summary CPU utilization from SAR:")
+                    self.log.info(line)
+                elif "all" in line:
+                    self.log.info(line)
+                else:
+                    sar_idle_sum += float(line.split()[7])
+
+        with open(os.path.join(sar_files_dir, sar_output_file), "w") as fh:
+            fh.write(out)
+        sar_cpu_usage = cpu_number * 100 - sar_idle_sum
+
+        with open(os.path.join(sar_files_dir, sar_cpu_util_file), "w") as f:
+            f.write("%0.2f" % sar_cpu_usage)
+
 
 class Target(Server):
     def __init__(self, name, general_config, target_config):
@@ -535,7 +567,6 @@ class Target(Server):
 
         # Target-side measurement options
         self.enable_pm = True
-        self.enable_sar = True
         self.enable_pcm = True
         self.enable_bw = True
         self.enable_dpdk_memory = True
@@ -556,8 +587,6 @@ class Target(Server):
             self.nvme_allowlist = list(set(self.nvme_allowlist) - set(self.nvme_blocklist))
         if "enable_pm" in target_config:
             self.enable_pm = target_config["enable_pm"]
-        if "enable_sar" in target_config:
-            self.enable_sar = target_config["enable_sar"]
         if "enable_pcm" in target_config:
             self.enable_pcm = target_config["enable_pcm"]
         if "enable_bandwidth" in target_config:
@@ -632,35 +661,6 @@ class Target(Server):
                 for c in nic_chunk:
                     ip_bdev_map.append((ip, c))
         return ip_bdev_map
-
-    def measure_sar(self, results_dir, sar_file_prefix, ramp_time, run_time):
-        cpu_number = os.cpu_count()
-        sar_idle_sum = 0
-        sar_files_dir = os.path.join(results_dir, "sar_output")
-        sar_output_file = os.path.join(sar_files_dir, sar_file_prefix + ".txt")
-        sar_cpu_util_file = os.path.join(sar_files_dir, ".".join([sar_file_prefix + "cpu_util", "txt"]))
-
-        self.log.info("Waiting %d seconds for ramp-up to finish before measuring SAR stats" % ramp_time)
-        time.sleep(ramp_time)
-        self.log.info("Starting SAR measurements")
-
-        self.exec_cmd(["mkdir", "-p", "%s" % sar_files_dir])
-        out = self.exec_cmd(["sar", "-P", "ALL", "%s" % 1, "%s" % run_time])
-        with open(os.path.join(sar_files_dir, sar_output_file), "w") as fh:
-            for line in out.split("\n"):
-                if "Average" in line:
-                    if "CPU" in line:
-                        self.log.info("Summary CPU utilization from SAR:")
-                        self.log.info(line)
-                    elif "all" in line:
-                        self.log.info(line)
-                    else:
-                        sar_idle_sum += float(line.split()[7])
-            fh.write(out)
-        sar_cpu_usage = cpu_number * 100 - sar_idle_sum
-
-        with open(os.path.join(sar_files_dir, sar_cpu_util_file), "w") as f:
-            f.write("%0.2f" % sar_cpu_usage)
 
     def measure_power(self, results_dir, prefix, script_full_dir, ramp_time, run_time):
         pm_files_dir = os.path.join(results_dir, "pm_output")
@@ -1801,10 +1801,17 @@ if __name__ == "__main__":
                 for i, cfg in zip(initiators, configs):
                     t = threading.Thread(target=i.run_fio, args=(cfg, run_no))
                     threads.append(t)
+
                 if target_obj.enable_sar:
-                    sar_file_prefix = measurements_prefix + "_sar"
+                    sar_file_prefix = measurements_prefix + "_sar_" + target_obj.name
                     t = threading.Thread(target=target_obj.measure_sar, args=(args.results, sar_file_prefix, fio_ramp_time, fio_run_time))
                     threads.append(t)
+
+                for i in initiators:
+                    if i.enable_sar:
+                        sar_file_prefix = measurements_prefix + "_sar_" + i.name
+                        t = threading.Thread(target=i.measure_sar, args=(args.results, sar_file_prefix, fio_ramp_time, fio_run_time))
+                        threads.append(t)
 
                 if target_obj.enable_pcm:
                     pcm_fnames = ["%s_%s.csv" % (measurements_prefix, x) for x in ["pcm_cpu", "pcm_memory", "pcm_power"]]

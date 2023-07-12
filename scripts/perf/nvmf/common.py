@@ -83,7 +83,7 @@ def read_json_stats(file):
             write_p99_lat, write_p99_9_lat, write_p99_99_lat, write_p99_999_lat]
 
 
-def read_target_stats(measurement_name, results_file_list, results_dir):
+def read_extra_stats(measurement_name, results_file_list, results_dir):
     # Read additional metrics measurements done on target side and
     # calculate the average from across all workload iterations.
     # Currently only works for SAR CPU utilization and power draw measurements.
@@ -207,12 +207,16 @@ def parse_results(results_dir, csv_file):
             aggregate_results[h] = "{0:.3f}".format(_)
 
         if sar_result_files:
-            aggr_headers.append("target_avg_cpu_util")
-            aggregate_results.update(read_target_stats("target_avg_cpu_util", sar_result_files, sar_files_dir))
+            system_names = set(sorted([os.path.splitext(x)[0].split("_")[-3] for x in sar_result_files]))
+            for system in system_names:
+                aggr_headers.append(f"{system}_avg_cpu_util")
+                aggregate_results.update(read_extra_stats(f"{system}_avg_cpu_util",
+                                                          [x for x in sar_result_files if system in x],
+                                                          sar_files_dir))
 
         if pm_result_files:
             aggr_headers.append("target_avg_power")
-            aggregate_results.update(read_target_stats("target_avg_power", pm_result_files, pm_files_dir))
+            aggregate_results.update(read_extra_stats("target_avg_power", pm_result_files, pm_files_dir))
 
         rows.add(",".join([job_name, *aggregate_results.values()]))
 

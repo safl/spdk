@@ -90,7 +90,7 @@ Optional:
   "core_mask": "[1-10]",
   "null_block_devices": 8,
   "nvmet_bin": "/path/to/nvmetcli",
-  "sar_settings": true,
+  "enable_sar": true,
   "pcm_settings": false,
   "enable_bandwidth": [true, 60],
   "enable_dpdk_memory": true
@@ -123,7 +123,7 @@ Optional, common:
 
 - null_block_devices - int, number of null block devices to create.
   Detected NVMe devices are not used if option is present. Default: 0.
-- sar_settings - bool
+- enable_sar - bool
   Enable SAR CPU utilization measurement on Target side. SAR thread will
   wait until fio finishes it's "ramp_time" and then start measurement for
   fio "run_time" duration. Default: enabled.
@@ -214,7 +214,8 @@ There can be one or more `initiatorX` setting sections, depending on the test se
   "cpu_frequency": 2100000,
   "adq_enable": false,
   "kernel_engine": "io_uring",
-  "irq_settings": { "mode": "bynode" }
+  "irq_settings": { "mode": "bynode" },
+  "enable_sar": true
 }
 ```
 
@@ -266,6 +267,8 @@ Optional, common:
   - io_uring
 - irq_settings - dict;
   Same as "irq_settings" in Target common options section.
+- enable_sar - bool
+  Same as "enable_sar" in Target common options section.
 
 Optional, SPDK Initiator only:
 
