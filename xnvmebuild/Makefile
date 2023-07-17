@@ -16,6 +16,7 @@ all:
 		-Dwith-libvfn=false \
 		-Dshared_library=false && \
 		meson compile -C builddir && \
+		rm -rf builddir/lib/*.so* \
 		cd -)
 
 install: all
