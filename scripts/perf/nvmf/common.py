@@ -215,8 +215,12 @@ def parse_results(results_dir, csv_file):
                                                           sar_files_dir))
 
         if pm_result_files:
-            aggr_headers.append("target_avg_power")
-            aggregate_results.update(read_extra_stats("target_avg_power", pm_result_files, pm_files_dir))
+            system_names = set(sorted([os.path.splitext(x)[0].split("_")[-3] for x in pm_result_files]))
+            for system in system_names:
+                aggr_headers.append(f"{system}_avg_power")
+                aggregate_results.update(read_extra_stats(f"{system}_avg_power",
+                                                          [x for x in pm_result_files if system in x],
+                                                          pm_files_dir))
 
         rows.add(",".join([job_name, *aggregate_results.values()]))
 

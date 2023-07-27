@@ -269,6 +269,8 @@ Optional, common:
   Same as "irq_settings" in Target common options section.
 - enable_sar - bool
   Same as "enable_sar" in Target common options section.
+- enable_pm - bool
+  Same as "enable_pm" in Target common options section.
 
 Optional, SPDK Initiator only:
 

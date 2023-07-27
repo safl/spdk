@@ -66,7 +66,8 @@ class Server(ABC):
             ConfigField(name='irq_scripts_dir', default='/usr/src/local/mlnx-tools/ofed_scripts'),
             ConfigField(name='enable_arfs', default=False),
             ConfigField(name='tuned_profile', default=''),
-            ConfigField(name='enable_sar', default=True)
+            ConfigField(name='enable_sar', default=True),
+            ConfigField(name='enable_pm', default=True)
         ]
         self.read_config(config_fields, server_config)
 
@@ -550,6 +551,13 @@ class Server(ABC):
         with open(os.path.join(sar_files_dir, sar_cpu_util_file), "w") as f:
             f.write("%0.2f" % sar_cpu_usage)
 
+    def measure_power(self, prefix, ramp_time, run_time):
+        time.sleep(ramp_time)
+        self.log.info("Starting power measurements")
+        self.exec_cmd(["sudo", f"{self.spdk_dir}/scripts/perf/pm/collect-bmc-pm",
+                      "-d", f"{self.pm_output}", "-l", "-p", f"{prefix}",
+                       "-x", "-c", f"{run_time}", "-t", "1", "-r"])
+
 
 class Target(Server):
     def __init__(self, name, general_config, target_config):
@@ -566,7 +574,6 @@ class Target(Server):
         self.nvme_blocklist = []
 
         # Target-side measurement options
-        self.enable_pm = True
         self.enable_pcm = True
         self.enable_bw = True
         self.enable_dpdk_memory = True
@@ -585,8 +592,6 @@ class Target(Server):
             self.nvme_allowlist = target_config["allowlist"]
             # Blocklist takes precedence, remove common elements from allowlist
             self.nvme_allowlist = list(set(self.nvme_allowlist) - set(self.nvme_blocklist))
-        if "enable_pm" in target_config:
-            self.enable_pm = target_config["enable_pm"]
         if "enable_pcm" in target_config:
             self.enable_pcm = target_config["enable_pcm"]
         if "enable_bandwidth" in target_config:
@@ -599,6 +604,7 @@ class Target(Server):
 
         self.script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         self.spdk_dir = os.path.abspath(os.path.join(self.script_dir, "../../../"))
+        self.pm_output = os.path.join(self.results_dir, "pm_output")
         self.set_local_nic_info(self.set_local_nic_info_helper())
 
         if self.skip_spdk_install is False:
@@ -661,15 +667,6 @@ class Target(Server):
                 for c in nic_chunk:
                     ip_bdev_map.append((ip, c))
         return ip_bdev_map
-
-    def measure_power(self, results_dir, prefix, script_full_dir, ramp_time, run_time):
-        pm_files_dir = os.path.join(results_dir, "pm_output")
-
-        time.sleep(ramp_time)
-        self.log.info("Starting power measurements")
-        self.exec_cmd(["%s/../pm/collect-bmc-pm" % script_full_dir,
-                      "-d", "%s" % pm_files_dir, "-l", "-p", "%s" % prefix,
-                       "-x", "-c", "%s" % run_time, "-t", "%s" % 1, "-r"])
 
     def measure_pcm_memory(self, results_dir, pcm_file_name, ramp_time, run_time):
         pcm_files_dir = os.path.join(results_dir, "pcm_output")
@@ -768,6 +765,7 @@ class Initiator(Server):
         self.read_config(config_fields, initiator_config)
         self.fio_configs_dir = os.path.join(self.spdk_dir, "nvmf_perf", "fio_configs")
         self.fio_json_out_dir = os.path.join(self.spdk_dir, "nvmf_perf", "fio_json_output")
+        self.pm_output = os.path.join(self.spdk_dir, "nvmf_perf", "pm_output")
 
         if os.getenv('SPDK_WORKSPACE'):
             self.spdk_dir = os.getenv('SPDK_WORKSPACE')
@@ -1839,10 +1837,16 @@ if __name__ == "__main__":
                     threads.append(t)
 
                 if target_obj.enable_pm:
+                    pm_file_prefix = measurements_prefix + "_pm_" + target_obj.name
                     power_daemon = threading.Thread(target=target_obj.measure_power,
-                                                    args=(args.results, measurements_prefix, script_full_dir,
-                                                          fio_ramp_time, fio_run_time))
+                                                    args=(pm_file_prefix, fio_ramp_time, fio_run_time))
                     threads.append(power_daemon)
+
+                for i in initiators:
+                    if i.enable_pm:
+                        pm_file_prefix = measurements_prefix + "_pm_" + i.name
+                        t = threading.Thread(target=i.measure_power, args=(pm_file_prefix, fio_ramp_time, fio_run_time))
+                        threads.append(t)
 
                 for t in threads:
                     t.start()
