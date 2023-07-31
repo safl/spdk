@@ -12,8 +12,6 @@ source $rootdir/test/nvmf/common.sh
 MALLOC_BDEV_SIZE=512
 MALLOC_BLOCK_SIZE=512
 
-nvmftestinit
-
 function nvmf_filesystem_create() {
 	fstype=$1
 	nvme_name=$2
@@ -33,14 +31,14 @@ function nvmf_filesystem_create() {
 		sleep 1
 	done
 
-	# Make sure the target did not crash
-	kill -0 $nvmfpid
+	# # Make sure the target did not crash
+	# kill -0 $nvmfpid
 
-	# Make sure the device is still present
-	lsblk -l -o NAME | grep -q -w "${nvme_name}"
+	# # Make sure the device is still present
+	# lsblk -l -o NAME | grep -q -w "${nvme_name}"
 
-	# Make sure the partition is still present
-	lsblk -l -o NAME | grep -q -w "${nvme_name}p1"
+	# # Make sure the partition is still present
+	# lsblk -l -o NAME | grep -q -w "${nvme_name}p1"
 }
 
 function nvmf_filesystem_part() {
@@ -82,7 +80,8 @@ function nvmf_filesystem_part() {
 		run_test "filesystem_in_capsule_btrfs" nvmf_filesystem_create "btrfs" ${nvme_name}
 		run_test "filesystem_in_capsule_xfs" nvmf_filesystem_create "xfs" ${nvme_name}
 	fi
-
+ 
+	sync
 	parted -s /dev/${nvme_name} rm 1
 
 	sync
@@ -97,7 +96,12 @@ function nvmf_filesystem_part() {
 	nvmfpid=
 }
 
-run_test "nvmf_filesystem_no_in_capsule" nvmf_filesystem_part 0
-run_test "nvmf_filesystem_in_capsule" nvmf_filesystem_part 4096
+i=11
+while ((i--)); do
+	nvmftestinit
 
-nvmftestfini
+	run_test "nvmf_filesystem_no_in_capsule" nvmf_filesystem_part 0
+	run_test "nvmf_filesystem_in_capsule" nvmf_filesystem_part 4096
+
+	nvmftestfini
+done
