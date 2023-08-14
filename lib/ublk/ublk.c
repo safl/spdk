@@ -89,6 +89,8 @@ struct ublk_io {
 	struct spdk_iobuf_entry	iobuf;
 
 	TAILQ_ENTRY(ublk_io)	tailq;
+
+	TAILQ_ENTRY(ublk_io)	next;
 };
 
 struct ublk_queue {
@@ -1146,12 +1148,15 @@ ublk_io_xmit(struct ublk_queue *q)
 	struct spdk_iobuf_channel *iobuf_ch;
 	int rc = 0, count = 0;
 	struct ublk_io *io;
+	TAILQ_HEAD(, ublk_io) payload_null_list;
+	void *buf = NULL;
 
 	if (TAILQ_EMPTY(&q->completed_io_list)) {
 		return 0;
 	}
 
 	TAILQ_INIT(&buffer_free_list);
+	TAILQ_INIT(&payload_null_list);
 	while (!TAILQ_EMPTY(&q->completed_io_list)) {
 		io = TAILQ_FIRST(&q->completed_io_list);
 		assert(io != NULL);
@@ -1164,6 +1169,24 @@ ublk_io_xmit(struct ublk_queue *q)
 		if (!io->need_data) {
 			TAILQ_INSERT_TAIL(&buffer_free_list, io, tailq);
 		}
+
+		/*
+		 * Some older kernels require a buffer to get posted. For a ublk_io whose last round
+		 * is read or write, io->payload is not NULL here. io->payload is set as NULL after
+		 * io_uring_submit. But if a ublk_io whose last round is command that requires no
+		 * io->payload such as flush, io->payload is NULL here. This will fail in some old
+		 * kernels.
+		 * So allocate a temporary buffer for purposes of this workaround. It will be freed
+		 * immediately after the commands are posted because it's not actually used.
+		 */
+		if (spdk_unlikely(io->payload == NULL)) {
+			if (!buf) {
+				buf = malloc(64);
+			}
+			io->payload = buf;
+			TAILQ_INSERT_TAIL(&payload_null_list, io, next);
+		}
+
 		ublksrv_queue_io_cmd(q, io, io->tag);
 		count++;
 	}
@@ -1173,6 +1196,13 @@ ublk_io_xmit(struct ublk_queue *q)
 		SPDK_ERRLOG("could not submit all commands\n");
 		assert(false);
 	}
+
+	while (!TAILQ_EMPTY(&payload_null_list)) {
+		io = TAILQ_FIRST(&payload_null_list);
+		TAILQ_REMOVE(&payload_null_list, io, next);
+		io->payload = NULL;
+	}
+	free(buf);
 
 	/* Note: for READ io, ublk will always copy the data out of
 	 * the buffers in the io_uring_submit context.  Since we
