@@ -1470,9 +1470,28 @@ ublk_set_params(struct spdk_ublk_dev *ublk, int status)
 {
 	int rc;
 
-	if (status != 0) {
+	rc = status;
+	if (rc != 0) {
+		if (rc == -EOPNOTSUPP) {
+			/* For linux kernel 6.4, ublk driver supports UBLK_F_CMD_IOCTL_ENCODE. But spdk can't get this feature
+			 * because UBLK_U_CMD_GET_FEATURES is not supported yet which makes ioctl_encode 0. Thus if kernel
+			 * config CONFIG_BLKDEV_UBLK_LEGACY_OPCODES is not set, when using linux 6.4, kernel expects encoded
+			 * opcode but spdk uses legacy opcodes, which makes the command fail.
+			 * To make it work on linux 6.4, if UBLK_CMD_ADD_DEV failed, update ioctl_opcode and try this command
+			 * again.
+			 */
+			g_ublk_tgt.ioctl_encode = !g_ublk_tgt.ioctl_encode;
+			UBLK_DEBUGLOG(ublk,
+				      "UBLK_CMD_ADD_DEV command failed, will update ioctl_enable as %d and try again\n",
+				      g_ublk_tgt.ioctl_encode);
+
+			rc = ublk_ctrl_cmd(ublk, UBLK_CMD_ADD_DEV);
+			if (rc == 0) {
+				return;
+			}
+		}
+
 		SPDK_ERRLOG("previous control command failed, will not set params\n");
-		rc = status;
 		goto err;
 	}
 
