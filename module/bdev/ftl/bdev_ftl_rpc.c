@@ -287,6 +287,14 @@ _rpc_bdev_ftl_get_stats(void *cntx)
 		spdk_json_write_object_end(w);
 	}
 
+	spdk_json_write_named_object_begin(w, "global_state");
+	spdk_json_write_named_uint64(w, "chunk_count", stats->chunk_count);
+	spdk_json_write_named_uint64(w, "chunk_free_count", stats->chunk_free_count);
+	spdk_json_write_named_uint64(w, "chunk_full_count", stats->chunk_full_count);
+	spdk_json_write_named_uint64(w, "bandCount", stats->bandCount);
+	spdk_json_write_named_uint64(w, "num_free_band", stats->num_free_band);
+	spdk_json_write_object_end(w);
+
 	spdk_json_write_object_end(w);
 	spdk_jsonrpc_end_result(request, w);
 

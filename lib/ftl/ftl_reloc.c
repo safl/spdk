@@ -261,7 +261,8 @@ static struct ftl_band *
 move_get_band(struct ftl_reloc *reloc)
 {
 	struct ftl_band *band = reloc->band;
-
+	reloc->dev->stats.num_free_band = reloc->dev->num_free;
+	reloc->dev->stats.bandCount = reloc->dev->num_bands;
 	if (!band) {
 		move_grab_new_band(reloc);
 		return NULL;

@@ -69,6 +69,11 @@ struct ftl_stats {
 	uint64_t		io_activity_total;
 
 	struct ftl_stats_entry	entries[FTL_STATS_TYPE_MAX];
+	uint64_t chunk_count;
+	uint64_t chunk_free_count;
+	uint64_t chunk_full_count;
+	uint64_t bandCount;
+	uint64_t num_free_band;
 };
 
 typedef void (*spdk_ftl_stats_fn)(struct ftl_stats *stats, void *cb_arg);
