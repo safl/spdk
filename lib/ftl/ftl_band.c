@@ -520,6 +520,8 @@ band_cmp(double a_invalidity, double a_wr_cnt,
 
 	if (a_wr_cnt != b_wr_cnt) {
 		return a_wr_cnt < b_wr_cnt;
+	} else {
+		return a_invalidity > b_invalidity;
 	}
 
 	return a_id < b_id;
