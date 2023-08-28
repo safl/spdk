@@ -779,12 +779,12 @@ ftl_mngt_recover_unmap_map_cb(struct spdk_ftl_dev *dev, struct ftl_md *md, int s
 
 		first_page = lba / lbas_in_page;
 		num_pages = num_blocks / lbas_in_page;
-
+#if 0
 		if (lba % lbas_in_page || num_blocks % lbas_in_page) {
 			ftl_mngt_fail_step(mngt);
 			return;
 		}
-
+#endif
 		for (j = first_page; j < first_page + num_pages; ++j) {
 			page[j] = spdk_max(vss_seq_id, page[j]);
 		}
