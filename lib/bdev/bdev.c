@@ -1855,7 +1855,7 @@ spdk_bdev_subsystem_config_json(struct spdk_json_write_ctx *w)
 
 	bdev_examine_allowlist_config_json(w);
 
-	TAILQ_FOREACH(bdev_module, &g_bdev_mgr.bdev_modules, internal.tailq) {
+	TAILQ_FOREACH_REVERSE(bdev_module, &g_bdev_mgr.bdev_modules, bdev_module_list, internal.tailq) {
 		if (bdev_module->config_json) {
 			bdev_module->config_json(w);
 		}

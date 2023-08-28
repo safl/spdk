@@ -2,7 +2,7 @@ all
 exclude_rule 'MD004'
 rule 'MD007', :indent => 2
 exclude_rule 'MD010'
-rule 'MD013', :line_length => 170
+:line_length => 170
 exclude_rule 'MD024'
 rule 'MD029', :style => "ordered"
 exclude_rule 'MD031'
