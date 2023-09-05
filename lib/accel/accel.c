@@ -781,6 +781,32 @@ spdk_accel_submit_xor(struct spdk_io_channel *ch, void *dst, void **sources, uin
 	return accel_submit_task(accel_ch, accel_task);
 }
 
+int
+spdk_accel_submit_dif_check(struct spdk_io_channel *ch, struct iovec *iovs, size_t iovcnt,
+			    uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+			    spdk_accel_completion_cb cb_fn, void *cb_arg)
+{
+	struct accel_io_channel *accel_ch = spdk_io_channel_get_ctx(ch);
+	struct spdk_accel_task *accel_task;
+
+	accel_task = _get_task(accel_ch, cb_fn, cb_arg);
+	if (accel_task == NULL) {
+		return -ENOMEM;
+	}
+
+	accel_task->s.iovs = iovs;
+	accel_task->s.iovcnt = iovcnt;
+	accel_task->dif.ctx = ctx;
+	accel_task->dif.num_blocks = num_blocks;
+	accel_task->nbytes = num_blocks * ctx->block_size;
+	accel_task->op_code = ACCEL_OPC_DIF_CHECK;
+	accel_task->src_domain = NULL;
+	accel_task->dst_domain = NULL;
+	accel_task->step_cb_fn = NULL;
+
+	return accel_submit_task(accel_ch, accel_task);
+}
+
 static inline struct accel_buffer *
 accel_get_buf(struct accel_io_channel *ch, uint64_t len)
 {

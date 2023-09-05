@@ -13,6 +13,7 @@
 
 #include "spdk/stdinc.h"
 #include "spdk/dma.h"
+#include "spdk/dif.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,7 +45,8 @@ enum accel_opcode {
 	ACCEL_OPC_ENCRYPT		= 8,
 	ACCEL_OPC_DECRYPT		= 9,
 	ACCEL_OPC_XOR			= 10,
-	ACCEL_OPC_LAST			= 11,
+	ACCEL_OPC_DIF_CHECK		= 11,
+	ACCEL_OPC_LAST			= 12,
 };
 
 enum spdk_accel_cipher {
@@ -320,6 +322,30 @@ int spdk_accel_submit_decompress(struct spdk_io_channel *ch, struct iovec *dst_i
  */
 int spdk_accel_submit_xor(struct spdk_io_channel *ch, void *dst, void **sources, uint32_t nsrcs,
 			  uint64_t nbytes, spdk_accel_completion_cb cb_fn, void *cb_arg);
+
+/**
+ * Submit a Data Integrity Field (DIF) check request.
+ *
+ * This operation computes the DIF on the data and compares
+ * the computed DIF to the DIF contained in the data.
+ *
+ * \param ch I/O channel associated with this call.
+ * \param iovs The io vector array. The total allocated memory size needs
+ *			   to be at least: num_blocks * block_size (provided to spdk_dif_ctx_init())
+ * \param iovcnt The size of the io vectors array.
+ * \param num_blocks Number of data blocks to check.
+ * \param ctx DIF context. Contains the DIF configuration values,
+ *		  including the reference Application Tag value
+ *		  and initial value of the Reference Tag to check
+ * \param cb_fn Called when this operation completes.
+ * \param cb_arg Callback argument.
+ *
+ * \return 0 on success, negative errno on failure (please note that the actual DIF check
+ *		   error is returned in the complation callback).
+ */
+int spdk_accel_submit_dif_check(struct spdk_io_channel *ch, struct iovec *iovs, size_t iovcnt,
+				uint32_t num_blocks, const struct spdk_dif_ctx *ctx,
+				spdk_accel_completion_cb cb_fn, void *cb_arg);
 
 /** Object grouping multiple accel operations to be executed at the same point in time */
 struct spdk_accel_sequence;

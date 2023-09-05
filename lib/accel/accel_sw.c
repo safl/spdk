@@ -17,6 +17,7 @@
 #include "spdk/crc32.h"
 #include "spdk/util.h"
 #include "spdk/xor.h"
+#include "spdk/dif.h"
 
 #ifdef SPDK_CONFIG_ISAL
 #include "../isa-l/include/igzip_lib.h"
@@ -77,6 +78,7 @@ sw_accel_supports_opcode(enum accel_opcode opc)
 	case ACCEL_OPC_ENCRYPT:
 	case ACCEL_OPC_DECRYPT:
 	case ACCEL_OPC_XOR:
+	case ACCEL_OPC_DIF_CHECK:
 		return true;
 	default:
 		return false;
@@ -442,6 +444,17 @@ _sw_accel_xor(struct sw_accel_io_channel *sw_ch, struct spdk_accel_task *accel_t
 }
 
 static int
+_sw_accel_dif_check(struct sw_accel_io_channel *sw_ch, struct spdk_accel_task *accel_task)
+{
+	struct spdk_dif_error err_blk;
+	return spdk_dif_verify(accel_task->s.iovs,
+			       accel_task->s.iovcnt,
+			       accel_task->dif.num_blocks,
+			       accel_task->dif.ctx,
+			       &err_blk);
+}
+
+static int
 sw_accel_submit_tasks(struct spdk_io_channel *ch, struct spdk_accel_task *accel_task)
 {
 	struct sw_accel_io_channel *sw_ch = spdk_io_channel_get_ctx(ch);
@@ -490,6 +503,9 @@ sw_accel_submit_tasks(struct spdk_io_channel *ch, struct spdk_accel_task *accel_
 			break;
 		case ACCEL_OPC_DECRYPT:
 			rc = _sw_accel_decrypt(sw_ch, accel_task);
+			break;
+		case ACCEL_OPC_DIF_CHECK:
+			rc = _sw_accel_dif_check(sw_ch, accel_task);
 			break;
 		default:
 			assert(false);

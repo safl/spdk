@@ -120,6 +120,10 @@ struct spdk_accel_task {
 		uint32_t		*crc_dst;
 		uint32_t		*output_size;
 		uint32_t		block_size; /* for crypto op */
+		struct {
+			const struct spdk_dif_ctx	*ctx;
+			uint32_t	num_blocks;
+		} dif;
 	};
 	uint64_t			iv; /* Initialization vector (tweak) for crypto op */
 	/* Uses enum accel_opcode */
