@@ -7,7 +7,7 @@
 
 def bdev_set_options(client, bdev_io_pool_size=None, bdev_io_cache_size=None,
                      bdev_auto_examine=None, iobuf_small_cache_size=None,
-                     iobuf_large_cache_size=None):
+                     iobuf_large_cache_size=None, bdev_io_stack_size=None):
     """Set parameters for the bdev subsystem.
     Args:
         bdev_io_pool_size: number of bdev_io structures in shared buffer pool (optional)
@@ -15,6 +15,7 @@ def bdev_set_options(client, bdev_io_pool_size=None, bdev_io_cache_size=None,
         bdev_auto_examine: if set to false, the bdev layer will not examine every disks automatically (optional)
         iobuf_small_cache_size: size of the small iobuf per thread cache
         iobuf_large_cache_size: size of the large iobuf per thread cache
+        bdev_io_stack_size: extra per-bdev context space in the spdk_bdev_io
     """
     params = dict()
     if bdev_io_pool_size is not None:
@@ -27,6 +28,8 @@ def bdev_set_options(client, bdev_io_pool_size=None, bdev_io_cache_size=None,
         params['iobuf_small_cache_size'] = iobuf_small_cache_size
     if iobuf_large_cache_size is not None:
         params['iobuf_large_cache_size'] = iobuf_large_cache_size
+    if bdev_io_stack_size:
+        params['bdev_io_stack_size'] = bdev_io_stack_size
     return client.call('bdev_set_options', params)
 
 
