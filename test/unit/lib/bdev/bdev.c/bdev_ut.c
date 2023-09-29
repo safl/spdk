@@ -4580,7 +4580,7 @@ bdev_channel_count_submitted_io(struct spdk_bdev_channel *ch)
 		return -1;
 	}
 
-	TAILQ_FOREACH(bdev_io, &ch->io_submitted, internal.ch_link) {
+	TAILQ_FOREACH(bdev_io, &ch->io_submitted, stack_ptr->ch_link) {
 		n++;
 	}
 

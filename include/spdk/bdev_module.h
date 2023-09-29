@@ -976,12 +976,6 @@ struct spdk_bdev_io_internal_fields {
 	/** Current tsc at submit time. Used to calculate latency at completion. */
 	uint64_t submit_tsc;
 
-	/** Entry to the list io_submitted of struct spdk_bdev_channel */
-	TAILQ_ENTRY(spdk_bdev_io) ch_link;
-
-	/** bdev_io pool entry */
-	STAILQ_ENTRY(spdk_bdev_io) buf_link;
-
 	/** Error information from a device */
 	union {
 		struct {
@@ -1071,6 +1065,37 @@ struct spdk_bdev_io_internal_fields {
 	void (*data_transfer_cpl)(void *ctx, int rc);
 };
 
+struct spdk_bdev_io_stack_frame {
+	/** The bdev_io this is inside. */
+	struct spdk_bdev_io *bdev_io;
+
+	/** The block device that this I/O belongs to. */
+	struct spdk_bdev *bdev;
+
+	/** The bdev I/O channel that this was handled on. */
+	struct spdk_bdev_channel *ch;
+
+	/** The bdev descriptor that was used when submitting this I/O. */
+	struct spdk_bdev_desc *desc;
+
+	/** User function that will be called when this completes */
+	spdk_bdev_io_completion_cb cb;
+
+	/** Context that will be passed to the completion callback */
+	void *caller_ctx;
+
+	TAILQ_ENTRY(spdk_bdev_io) ch_link;
+
+	STAILQ_ENTRY(spdk_bdev_io) buf_link;
+
+	/**
+	 * Per I/O context for use by the bdev module.
+	 */
+	uint8_t driver_ctx[0];
+
+	/* No members may be added after driver_ctx! */
+};
+
 struct spdk_bdev_io {
 	/** The block device that this I/O belongs to. */
 	struct spdk_bdev *bdev;
@@ -1110,15 +1135,23 @@ struct spdk_bdev_io {
 	 */
 	struct spdk_bdev_io_internal_fields internal;
 
-	/**
-	 * Per I/O context for use by the bdev module.
-	 */
-	uint8_t driver_ctx[0];
+	struct spdk_bdev_io_stack_frame *stack_ptr;
 
-	/* No members may be added after driver_ctx! */
+	/**
+	 * Stack of per-bdev-layer data.
+	 */
+	struct spdk_bdev_io_stack_frame frame0;
+
+	/* No members may be added after ctx_stack! */
+	void *ctx_stack[0];
 };
-SPDK_STATIC_ASSERT(offsetof(struct spdk_bdev_io, driver_ctx) % SPDK_CACHE_LINE_SIZE == 0,
-		   "driver_ctx not cache line aligned");
+
+static inline void
+spdk_bdev_io_init_stack(struct spdk_bdev_io *bdev_io)
+{
+	bdev_io->frame0.bdev_io = bdev_io;
+	bdev_io->stack_ptr = &bdev_io->frame0;
+}
 
 /**
  * Register a new bdev.
@@ -1442,13 +1475,82 @@ struct spdk_bdev_module *spdk_bdev_module_list_find(const char *name);
 static inline struct spdk_bdev_io *
 spdk_bdev_io_from_ctx(void *ctx)
 {
-	return SPDK_CONTAINEROF(ctx, struct spdk_bdev_io, driver_ctx);
+	struct spdk_bdev_io_stack_frame *frame;
+
+	frame = SPDK_CONTAINEROF(ctx, struct spdk_bdev_io_stack_frame, driver_ctx);
+	return frame->bdev_io;
 }
 
 static inline void *
 spdk_bdev_io_to_ctx(struct spdk_bdev_io *bdev_io)
 {
-	return bdev_io->driver_ctx;
+	return bdev_io->stack_ptr->driver_ctx;
+}
+
+/**
+ * Submit the specified bdev_io for execution.
+ *
+ * The caller is responsible for ensuring the bdev_io is properly filled out
+ * before calling this function.
+ *
+ * A common use case for this function is bdev modules which take a bdev_io
+ * it has received, saves its state by calling spdk_bdev_io_push_stack()
+ * and then calling this function. The completion function is then responsible
+ * for calling spdk_bdev_io_pop_stack() prior to completing it to the
+ * bdev layer.
+ *
+ * \param bdev_io spdk_bdev_io structure to submit
+ * \param desc Block device descriptor
+ * \param ch I/O channel
+ * \param cb Called when the request is complete
+ * \param cb_arg Argument passed to cb
+ */
+int spdk_bdev_io_submit(struct spdk_bdev_io *bdev_io, struct spdk_bdev_desc *desc,
+			struct spdk_io_channel *ch,
+			spdk_bdev_io_completion_cb cb, void *cb_arg);
+
+static inline int
+spdk_bdev_io_stack_push(struct spdk_bdev_io *bdev_io)
+{
+	struct spdk_bdev *bdev = bdev_io->bdev;
+	uintptr_t stack_ptr;
+
+	/* Push a frame onto the bdev_io stack */
+	stack_ptr = (uintptr_t)bdev_io->stack_ptr;
+	stack_ptr += sizeof(struct spdk_bdev_io_stack_frame) + bdev->module->get_ctx_size();
+	bdev_io->stack_ptr = (struct spdk_bdev_io_stack_frame *)stack_ptr;
+
+	/* Populate the stack frame with the current mutable values */
+	bdev_io->stack_ptr->bdev_io = bdev_io;
+	bdev_io->stack_ptr->bdev = bdev_io->bdev;
+	bdev_io->stack_ptr->ch = bdev_io->internal.ch;
+	bdev_io->stack_ptr->desc = bdev_io->internal.desc;
+	/* memset ch_link? */
+	bdev_io->stack_ptr->caller_ctx = bdev_io->internal.caller_ctx;;
+	bdev_io->stack_ptr->cb = bdev_io->internal.cb;
+
+	return 0;
+}
+
+static inline int
+spdk_bdev_io_stack_pop(struct spdk_bdev_io *bdev_io)
+{
+	uintptr_t stack_ptr;
+
+	/* Restore the mutable values from the current stack frame */
+	bdev_io->bdev = bdev_io->stack_ptr->bdev;
+	bdev_io->internal.ch = bdev_io->stack_ptr->ch;
+	bdev_io->internal.desc = bdev_io->stack_ptr->desc;
+	bdev_io->internal.caller_ctx = bdev_io->stack_ptr->caller_ctx;
+	bdev_io->internal.cb = bdev_io->stack_ptr->cb;
+	bdev_io->internal.status = SPDK_BDEV_IO_STATUS_PENDING;
+
+	/* Pop the frame */
+	stack_ptr = (uintptr_t)bdev_io->stack_ptr;
+	stack_ptr -= sizeof(struct spdk_bdev_io_stack_frame) + bdev_io->bdev->module->get_ctx_size();
+	bdev_io->stack_ptr = (struct spdk_bdev_io_stack_frame *)stack_ptr;
+
+	return 0;
 }
 
 struct spdk_bdev_part_base;
