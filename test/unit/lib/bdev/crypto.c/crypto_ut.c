@@ -233,6 +233,7 @@ test_setup(void)
 {
 	/* Prepare essential variables for test routines */
 	g_base_io = calloc(1, sizeof(struct spdk_bdev_io) + sizeof(struct crypto_bdev_io));
+	spdk_bdev_io_init_stack(g_base_io);
 	g_base_io->u.bdev.iovs = calloc(1, sizeof(struct iovec) * 128);
 	g_base_io->bdev = &g_crypto_bdev.crypto_bdev;
 	g_io_ch = calloc(1, sizeof(struct spdk_io_channel) + sizeof(struct crypto_io_channel));
@@ -281,6 +282,7 @@ test_error_paths(void)
 
 	g_crypto_bdev.crypto_bdev.blocklen = 512;
 
+	spdk_bdev_io_init_stack(bdev_io);
 	bdev_io->internal.status = SPDK_BDEV_IO_STATUS_PENDING;
 	bdev_io->u.bdev.iovcnt = 1;
 	bdev_io->u.bdev.num_blocks = 1;
@@ -378,6 +380,7 @@ test_simple_write(void)
 	struct crypto_bdev_io *crypto_io = &io.crypto_io;
 
 	/* Single element block size write */
+	spdk_bdev_io_init_stack(bdev_io);
 	bdev_io->internal.status = SPDK_BDEV_IO_STATUS_PENDING;
 	bdev_io->u.bdev.iovcnt = 1;
 	bdev_io->u.bdev.num_blocks = 1;
@@ -406,6 +409,7 @@ test_simple_read(void)
 	struct spdk_bdev_io *bdev_io = &io.bdev_io;
 
 	/* Single element block size read */
+	spdk_bdev_io_init_stack(bdev_io);
 	bdev_io->internal.status = SPDK_BDEV_IO_STATUS_PENDING;
 	bdev_io->u.bdev.iovcnt = 1;
 	bdev_io->u.bdev.num_blocks = 1;
@@ -428,6 +432,7 @@ test_passthru(void)
 	struct spdk_bdev_io *bdev_io = &io.bdev_io;
 
 	/* Make sure these follow our completion callback, test success & fail. */
+	spdk_bdev_io_init_stack(bdev_io);
 	bdev_io->type = SPDK_BDEV_IO_TYPE_UNMAP;
 	MOCK_CLEAR(spdk_bdev_unmap_blocks);
 	vbdev_crypto_submit_request(g_io_ch, bdev_io);
@@ -471,6 +476,7 @@ test_crypto_op_complete(void)
 	struct spdk_bdev_io *bdev_io = &io.bdev_io;
 
 	/* Test read completion. */
+	spdk_bdev_io_init_stack(bdev_io);
 	g_base_io->internal.status = SPDK_BDEV_IO_STATUS_SUCCESS;
 	bdev_io->internal.status  = SPDK_BDEV_IO_STATUS_PENDING;
 	bdev_io->type = SPDK_BDEV_IO_TYPE_READ;

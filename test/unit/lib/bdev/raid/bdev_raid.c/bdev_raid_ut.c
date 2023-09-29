@@ -652,6 +652,7 @@ _bdev_io_initialize(struct spdk_bdev_io *bdev_io, struct spdk_io_channel *ch,
 	bdev_io->type = iotype;
 	bdev_io->internal.ch = channel;
 	bdev_io->u.bdev.iovcnt = iovcnt;
+	spdk_bdev_io_init_stack(bdev_io);
 
 	if (iovcnt == 0) {
 		bdev_io->u.bdev.iovs = NULL;
@@ -1530,9 +1531,9 @@ test_raid_io_split(void)
 	/* test split of bdev_io with 1 iovec */
 	bdev_io = calloc(1, sizeof(struct spdk_bdev_io) + sizeof(struct raid_bdev_io));
 	SPDK_CU_ASSERT_FATAL(bdev_io != NULL);
-	raid_io = (struct raid_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	_bdev_io_initialize(bdev_io, ch, &pbdev->bdev, 0, g_strip_size, SPDK_BDEV_IO_TYPE_WRITE, 1,
 			    g_strip_size * g_block_len);
+	raid_io = (struct raid_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	memcpy(iovs_orig, bdev_io->u.bdev.iovs, sizeof(*iovs_orig) * bdev_io->u.bdev.iovcnt);
 
 	split_offset = 1;
@@ -1577,9 +1578,9 @@ test_raid_io_split(void)
 	/* test split of bdev_io with 4 iovecs */
 	bdev_io = calloc(1, sizeof(struct spdk_bdev_io) + sizeof(struct raid_bdev_io));
 	SPDK_CU_ASSERT_FATAL(bdev_io != NULL);
-	raid_io = (struct raid_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	_bdev_io_initialize(bdev_io, ch, &pbdev->bdev, 0, g_strip_size, SPDK_BDEV_IO_TYPE_WRITE,
 			    4, g_strip_size / 4 * g_block_len);
+	raid_io = (struct raid_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	memcpy(iovs_orig, bdev_io->u.bdev.iovs, sizeof(*iovs_orig) * bdev_io->u.bdev.iovcnt);
 
 	split_offset = 1; /* split at the first iovec */
