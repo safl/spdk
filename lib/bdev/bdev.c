@@ -38,6 +38,7 @@ int __itt_init_ittlib(const char *, __itt_group_id);
 #define SPDK_BDEV_IO_POOL_SIZE			(64 * 1024 - 1)
 #define SPDK_BDEV_IO_CACHE_SIZE			256
 #define SPDK_BDEV_AUTO_EXAMINE			true
+#define SPDK_BDEV_IO_STACK_SIZE			0x1000
 #define BUF_SMALL_CACHE_SIZE			128
 #define BUF_LARGE_CACHE_SIZE			16
 #define NOMEM_THRESHOLD_COUNT			8
@@ -150,6 +151,7 @@ static struct spdk_bdev_opts	g_bdev_opts = {
 	.bdev_auto_examine = SPDK_BDEV_AUTO_EXAMINE,
 	.iobuf_small_cache_size = BUF_SMALL_CACHE_SIZE,
 	.iobuf_large_cache_size = BUF_LARGE_CACHE_SIZE,
+	.bdev_io_stack_size = SPDK_BDEV_IO_STACK_SIZE,
 };
 
 static spdk_bdev_init_cb	g_init_cb_fn = NULL;
@@ -446,14 +448,14 @@ static bool bdev_io_should_split(struct spdk_bdev_io *bdev_io);
 static inline void
 bdev_ch_add_to_io_submitted(struct spdk_bdev_io *bdev_io)
 {
-	TAILQ_INSERT_TAIL(&bdev_io->internal.ch->io_submitted, bdev_io, internal.ch_link);
+	TAILQ_INSERT_TAIL(&bdev_io->internal.ch->io_submitted, bdev_io, stack_ptr->ch_link);
 	bdev_io->internal.ch->queue_depth++;
 }
 
 static inline void
 bdev_ch_remove_from_io_submitted(struct spdk_bdev_io *bdev_io)
 {
-	TAILQ_REMOVE(&bdev_io->internal.ch->io_submitted, bdev_io, internal.ch_link);
+	TAILQ_REMOVE(&bdev_io->internal.ch->io_submitted, bdev_io, stack_ptr->ch_link);
 	bdev_io->internal.ch->queue_depth--;
 }
 
@@ -482,10 +484,11 @@ spdk_bdev_get_opts(struct spdk_bdev_opts *opts, size_t opts_size)
 	SET_FIELD(bdev_auto_examine);
 	SET_FIELD(iobuf_small_cache_size);
 	SET_FIELD(iobuf_large_cache_size);
+	SET_FIELD(bdev_io_stack_size);
 
 	/* Do not remove this statement, you should always update this statement when you adding a new field,
 	 * and do not forget to add the SET_FIELD statement for your added field. */
-	SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_opts) == 32, "Incorrect size");
+	SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_opts) == 36, "Incorrect size");
 
 #undef SET_FIELD
 }
@@ -529,6 +532,7 @@ spdk_bdev_set_opts(struct spdk_bdev_opts *opts)
 	SET_FIELD(bdev_auto_examine);
 	SET_FIELD(iobuf_small_cache_size);
 	SET_FIELD(iobuf_large_cache_size);
+	SET_FIELD(bdev_io_stack_size);
 
 	g_bdev_opts.opts_size = opts->opts_size;
 
@@ -1993,6 +1997,7 @@ spdk_bdev_subsystem_config_json(struct spdk_json_write_ctx *w)
 	spdk_json_write_named_bool(w, "bdev_auto_examine", g_bdev_opts.bdev_auto_examine);
 	spdk_json_write_named_uint32(w, "iobuf_small_cache_size", g_bdev_opts.iobuf_small_cache_size);
 	spdk_json_write_named_uint32(w, "iobuf_large_cache_size", g_bdev_opts.iobuf_large_cache_size);
+	spdk_json_write_named_uint32(w, "bdev_io_stack_size", g_bdev_opts.bdev_io_stack_size);
 	spdk_json_write_object_end(w);
 	spdk_json_write_object_end(w);
 
@@ -2035,7 +2040,7 @@ bdev_mgmt_channel_destroy(void *io_device, void *ctx_buf)
 
 	while (!STAILQ_EMPTY(&ch->per_thread_cache)) {
 		bdev_io = STAILQ_FIRST(&ch->per_thread_cache);
-		STAILQ_REMOVE_HEAD(&ch->per_thread_cache, internal.buf_link);
+		STAILQ_REMOVE_HEAD(&ch->per_thread_cache, stack_ptr->buf_link);
 		ch->per_thread_cache_count--;
 		spdk_mempool_put(g_bdev_mgr.bdev_io_pool, (void *)bdev_io);
 	}
@@ -2073,7 +2078,7 @@ bdev_mgmt_channel_create(void *io_device, void *ctx_buf)
 			return -1;
 		}
 		ch->per_thread_cache_count++;
-		STAILQ_INSERT_HEAD(&ch->per_thread_cache, bdev_io, internal.buf_link);
+		STAILQ_INSERT_HEAD(&ch->per_thread_cache, bdev_io, stack_ptr->buf_link);
 	}
 
 	TAILQ_INIT(&ch->shared_resources);
@@ -2217,11 +2222,20 @@ bdev_modules_init(void)
 	return 0;
 }
 
+static void
+bdev_io_ctor(struct spdk_mempool *mp, void *arg, void *m, unsigned i)
+{
+	struct spdk_bdev_io *bdev_io = m;
+
+	spdk_bdev_io_init_stack(bdev_io);
+}
+
 void
 spdk_bdev_initialize(spdk_bdev_init_cb cb_fn, void *cb_arg)
 {
 	int rc = 0;
 	char mempool_name[32];
+	int stack_size;
 
 	assert(cb_fn != NULL);
 
@@ -2240,12 +2254,17 @@ spdk_bdev_initialize(spdk_bdev_init_cb cb_fn, void *cb_arg)
 		return;
 	}
 
-	g_bdev_mgr.bdev_io_pool = spdk_mempool_create(mempool_name,
+	stack_size = g_bdev_opts.bdev_io_stack_size;
+	if (bdev_module_get_max_ctx_size() > (stack_size / 2)) {
+		SPDK_WARNLOG("Maximum bdev module context size is large compared to stack size. spdk_bdev_io_stack_* will not work.\n");
+	}
+
+	g_bdev_mgr.bdev_io_pool = spdk_mempool_create_ctor(mempool_name,
 				  g_bdev_opts.bdev_io_pool_size,
 				  sizeof(struct spdk_bdev_io) +
-				  bdev_module_get_max_ctx_size(),
+				  stack_size,
 				  0,
-				  SPDK_ENV_NUMA_ID_ANY);
+				  SPDK_ENV_NUMA_ID_ANY, bdev_io_ctor, NULL);
 
 	if (g_bdev_mgr.bdev_io_pool == NULL) {
 		SPDK_ERRLOG("could not allocate spdk_bdev_io pool\n");
@@ -2514,7 +2533,7 @@ bdev_channel_get_io(struct spdk_bdev_channel *channel)
 
 	if (ch->per_thread_cache_count > 0) {
 		bdev_io = STAILQ_FIRST(&ch->per_thread_cache);
-		STAILQ_REMOVE_HEAD(&ch->per_thread_cache, internal.buf_link);
+		STAILQ_REMOVE_HEAD(&ch->per_thread_cache, stack_ptr->buf_link);
 		ch->per_thread_cache_count--;
 	} else if (spdk_unlikely(!TAILQ_EMPTY(&ch->io_wait_queue))) {
 		/*
@@ -2526,6 +2545,7 @@ bdev_channel_get_io(struct spdk_bdev_channel *channel)
 		bdev_io = spdk_mempool_get(g_bdev_mgr.bdev_io_pool);
 	}
 
+	assert(bdev_io == NULL || bdev_io->stack_ptr == &bdev_io->frame0);
 	return bdev_io;
 }
 
@@ -2535,6 +2555,7 @@ spdk_bdev_free_io(struct spdk_bdev_io *bdev_io)
 	struct spdk_bdev_mgmt_channel *ch;
 
 	assert(bdev_io != NULL);
+	assert(bdev_io->stack_ptr == &bdev_io->frame0);
 	assert(bdev_io->internal.status != SPDK_BDEV_IO_STATUS_PENDING);
 
 	ch = bdev_io->internal.ch->shared_resource->mgmt_ch;
@@ -2545,7 +2566,7 @@ spdk_bdev_free_io(struct spdk_bdev_io *bdev_io)
 
 	if (ch->per_thread_cache_count < ch->bdev_io_cache_size) {
 		ch->per_thread_cache_count++;
-		STAILQ_INSERT_HEAD(&ch->per_thread_cache, bdev_io, internal.buf_link);
+		STAILQ_INSERT_HEAD(&ch->per_thread_cache, bdev_io, stack_ptr->buf_link);
 		while (ch->per_thread_cache_count > 0 && !TAILQ_EMPTY(&ch->io_wait_queue)) {
 			struct spdk_bdev_io_wait_entry *entry;
 
@@ -3637,7 +3658,7 @@ bdev_io_submit(struct spdk_bdev_io *bdev_io)
 
 		TAILQ_FOREACH(range, &ch->locked_ranges, tailq) {
 			if (bdev_io_range_is_locked(bdev_io, range)) {
-				TAILQ_INSERT_TAIL(&ch->io_locked, bdev_io, internal.ch_link);
+				TAILQ_INSERT_TAIL(&ch->io_locked, bdev_io, stack_ptr->ch_link);
 				return;
 			}
 		}
@@ -4081,7 +4102,7 @@ bdev_channel_poll_timeout_io(struct spdk_bdev_channel_iter *i, struct spdk_bdev 
 	spdk_spin_unlock(&desc->spinlock);
 
 	now = spdk_get_ticks();
-	TAILQ_FOREACH(bdev_io, &bdev_ch->io_submitted, internal.ch_link) {
+	TAILQ_FOREACH(bdev_io, &bdev_ch->io_submitted, stack_ptr->ch_link) {
 		/* Exclude any I/O that are generated via splitting. */
 		if (bdev_io->internal.cb == bdev_io_split_done) {
 			continue;
@@ -5393,6 +5414,22 @@ uint64_t
 spdk_bdev_io_get_seek_offset(const struct spdk_bdev_io *bdev_io)
 {
 	return bdev_io->u.bdev.seek.offset;
+}
+
+int
+spdk_bdev_io_submit(struct spdk_bdev_io *bdev_io, struct spdk_bdev_desc *desc,
+		    struct spdk_io_channel *ch,
+		    spdk_bdev_io_completion_cb cb, void *cb_arg)
+{
+	struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(desc);
+	struct spdk_bdev_channel *channel = __io_ch_to_bdev_ch(ch);
+
+	bdev_io->internal.desc = desc;
+	bdev_io->internal.ch = channel;
+	bdev_io_init(bdev_io, bdev, cb_arg, cb);
+
+	_bdev_io_submit_ext(desc, bdev_io);
+	return 0;
 }
 
 static int
@@ -6992,7 +7029,7 @@ bdev_abort_io_done(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 
 	if (!success) {
 		/* Check if the target I/O completed in the meantime. */
-		TAILQ_FOREACH(tmp_io, &channel->io_submitted, internal.ch_link) {
+		TAILQ_FOREACH(tmp_io, &channel->io_submitted, stack_ptr->ch_link) {
 			if (tmp_io == bio_to_abort) {
 				break;
 			}
@@ -7102,7 +7139,7 @@ _bdev_abort(struct spdk_bdev_io *parent_io)
 	matched_ios = 0;
 	parent_io->internal.status = SPDK_BDEV_IO_STATUS_SUCCESS;
 
-	TAILQ_FOREACH(bio_to_abort, &channel->io_submitted, internal.ch_link) {
+	TAILQ_FOREACH(bio_to_abort, &channel->io_submitted, stack_ptr->ch_link) {
 		if (bio_to_abort->internal.caller_ctx != bio_cb_arg) {
 			continue;
 		}
@@ -9226,6 +9263,12 @@ spdk_bdev_io_get_cb_arg(struct spdk_bdev_io *bdev_io)
 	return bdev_io->internal.caller_ctx;
 }
 
+static int
+bdev_module_dummy_get_ctx_size(void)
+{
+	return 0;
+}
+
 void
 spdk_bdev_module_list_add(struct spdk_bdev_module *bdev_module)
 {
@@ -9233,6 +9276,10 @@ spdk_bdev_module_list_add(struct spdk_bdev_module *bdev_module)
 	if (spdk_bdev_module_list_find(bdev_module->name)) {
 		SPDK_ERRLOG("ERROR: module '%s' already registered.\n", bdev_module->name);
 		assert(false);
+	}
+
+	if (bdev_module->get_ctx_size == NULL) {
+		bdev_module->get_ctx_size = bdev_module_dummy_get_ctx_size;
 	}
 
 	spdk_spin_init(&bdev_module->internal.spinlock);
@@ -9911,7 +9958,7 @@ bdev_lock_lba_range_check_io(void *_i)
 	 * range.  But we need to wait until any outstanding IO overlapping with this range
 	 * are completed.
 	 */
-	TAILQ_FOREACH(bdev_io, &ch->io_submitted, internal.ch_link) {
+	TAILQ_FOREACH(bdev_io, &ch->io_submitted, stack_ptr->ch_link) {
 		if (bdev_io_range_is_locked(bdev_io, range)) {
 			ctx->poller = SPDK_POLLER_REGISTER(bdev_lock_lba_range_check_io, i, 100);
 			return SPDK_POLLER_BUSY;
@@ -10120,10 +10167,10 @@ bdev_unlock_lba_range_get_channel(struct spdk_bdev_channel_iter *i, struct spdk_
 	 * we go for simplicity here.
 	 */
 	TAILQ_INIT(&io_locked);
-	TAILQ_SWAP(&ch->io_locked, &io_locked, spdk_bdev_io, internal.ch_link);
+	TAILQ_SWAP(&ch->io_locked, &io_locked, spdk_bdev_io, stack_ptr->ch_link);
 	while (!TAILQ_EMPTY(&io_locked)) {
 		bdev_io = TAILQ_FIRST(&io_locked);
-		TAILQ_REMOVE(&io_locked, bdev_io, internal.ch_link);
+		TAILQ_REMOVE(&io_locked, bdev_io, stack_ptr->ch_link);
 		bdev_io_submit(bdev_io);
 	}
 
@@ -10362,7 +10409,7 @@ bdev_channel_for_each_io(struct spdk_bdev_channel_iter *i, struct spdk_bdev *bde
 	struct spdk_bdev_io *bdev_io;
 	int rc = 0;
 
-	TAILQ_FOREACH(bdev_io, &bdev_ch->io_submitted, internal.ch_link) {
+	TAILQ_FOREACH(bdev_io, &bdev_ch->io_submitted, stack_ptr->ch_link) {
 		rc = ctx->fn(ctx->ctx, bdev_io);
 		if (rc != 0) {
 			break;
