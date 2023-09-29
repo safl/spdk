@@ -261,7 +261,7 @@ static void
 bdev_aio_fallocate(struct spdk_bdev_io *bdev_io, int mode)
 {
 	struct file_disk *fdisk = (struct file_disk *)bdev_io->bdev->ctxt;
-	struct bdev_aio_task *aio_task = (struct bdev_aio_task *)bdev_io->driver_ctx;
+	struct bdev_aio_task *aio_task = (struct bdev_aio_task *)spdk_bdev_io_to_ctx(bdev_io);
 	uint64_t offset_bytes = bdev_io->u.bdev.offset_blocks * bdev_io->bdev->blocklen;
 	uint64_t length_bytes = bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen;
 	int rc;
@@ -591,7 +591,7 @@ bdev_aio_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
 		bdev_aio_rw(bdev_io->type,
 			    (struct file_disk *)bdev_io->bdev->ctxt,
 			    ch,
-			    (struct bdev_aio_task *)bdev_io->driver_ctx,
+			    (struct bdev_aio_task *)spdk_bdev_io_to_ctx(bdev_io),
 			    bdev_io->u.bdev.iovs,
 			    bdev_io->u.bdev.iovcnt,
 			    bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen,
@@ -627,12 +627,12 @@ _bdev_aio_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_i
 
 	case SPDK_BDEV_IO_TYPE_FLUSH:
 		bdev_aio_flush((struct file_disk *)bdev_io->bdev->ctxt,
-			       (struct bdev_aio_task *)bdev_io->driver_ctx);
+			       (struct bdev_aio_task *)spdk_bdev_io_to_ctx(bdev_io));
 		return 0;
 
 	case SPDK_BDEV_IO_TYPE_RESET:
 		bdev_aio_reset((struct file_disk *)bdev_io->bdev->ctxt,
-			       (struct bdev_aio_task *)bdev_io->driver_ctx);
+			       (struct bdev_aio_task *)spdk_bdev_io_to_ctx(bdev_io));
 		return 0;
 
 #ifndef __FreeBSD__

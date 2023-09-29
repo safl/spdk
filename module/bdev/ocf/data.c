@@ -85,7 +85,7 @@ vbdev_ocf_data_from_spdk_io(struct spdk_bdev_io *bdev_io)
 		return NULL;
 	}
 
-	data = (struct bdev_ocf_data *)bdev_io->driver_ctx;
+	data = (struct bdev_ocf_data *)spdk_bdev_io_to_ctx(bdev_io);
 	data->iovs = bdev_io->u.bdev.iovs;
 	data->iovcnt = bdev_io->u.bdev.iovcnt;
 	data->size = bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen;

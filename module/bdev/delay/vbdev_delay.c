@@ -191,7 +191,7 @@ _delay_complete_io(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_io *orig_io = cb_arg;
 	struct vbdev_delay *delay_node = SPDK_CONTAINEROF(orig_io->bdev, struct vbdev_delay, delay_bdev);
-	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)orig_io->driver_ctx;
+	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)spdk_bdev_io_to_ctx(orig_io);
 	struct delay_io_channel *delay_ch = spdk_io_channel_get_ctx(io_ctx->ch);
 
 	io_ctx->status = success ? SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED;
@@ -233,7 +233,7 @@ static void
 vbdev_delay_resubmit_io(void *arg)
 {
 	struct spdk_bdev_io *bdev_io = (struct spdk_bdev_io *)arg;
-	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)bdev_io->driver_ctx;
+	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	vbdev_delay_submit_request(io_ctx->ch, bdev_io);
 }
@@ -241,7 +241,7 @@ vbdev_delay_resubmit_io(void *arg)
 static void
 vbdev_delay_queue_io(struct spdk_bdev_io *bdev_io)
 {
-	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)bdev_io->driver_ctx;
+	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct delay_io_channel *delay_ch = spdk_io_channel_get_ctx(io_ctx->ch);
 	int rc;
 
@@ -299,7 +299,7 @@ static void
 vbdev_delay_reset_dev(struct spdk_io_channel_iter *i, int status)
 {
 	struct spdk_bdev_io *bdev_io = spdk_io_channel_iter_get_ctx(i);
-	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)bdev_io->driver_ctx;
+	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct delay_io_channel *delay_ch = spdk_io_channel_get_ctx(io_ctx->ch);
 	struct vbdev_delay *delay_node = spdk_io_channel_iter_get_io_device(i);
 	int rc;
@@ -355,7 +355,7 @@ static bool
 abort_delayed_io(void *_head, struct spdk_bdev_io *bio_to_abort)
 {
 	STAILQ_HEAD(, delay_bdev_io) *head = _head;
-	struct delay_bdev_io *io_ctx_to_abort = (struct delay_bdev_io *)bio_to_abort->driver_ctx;
+	struct delay_bdev_io *io_ctx_to_abort = (struct delay_bdev_io *)spdk_bdev_io_to_ctx(bio_to_abort);
 	struct delay_bdev_io *io_ctx;
 
 	STAILQ_FOREACH(io_ctx, head, link) {
@@ -395,7 +395,7 @@ vbdev_delay_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev
 {
 	struct vbdev_delay *delay_node = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_delay, delay_bdev);
 	struct delay_io_channel *delay_ch = spdk_io_channel_get_ctx(ch);
-	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)bdev_io->driver_ctx;
+	struct delay_bdev_io *io_ctx = (struct delay_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_bdev_ext_io_opts io_opts;
 	int rc = 0;
 	bool is_p99;

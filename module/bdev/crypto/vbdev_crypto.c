@@ -100,7 +100,7 @@ crypto_write(struct crypto_io_channel *crypto_ch, struct spdk_bdev_io *bdev_io)
 {
 	struct vbdev_crypto *crypto_bdev = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_crypto,
 					   crypto_bdev);
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_bdev_ext_io_opts opts = {};
 	int rc;
 
@@ -129,7 +129,7 @@ crypto_write(struct crypto_io_channel *crypto_ch, struct spdk_bdev_io *bdev_io)
 static void
 crypto_encrypt(struct crypto_io_channel *crypto_ch, struct spdk_bdev_io *bdev_io)
 {
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	uint32_t blocklen = crypto_io->crypto_bdev->crypto_bdev.blocklen;
 	uint64_t total_length;
 	uint64_t alignment;
@@ -178,7 +178,7 @@ static void
 _complete_internal_io(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_io *orig_io = cb_arg;
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)orig_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(orig_io);
 	struct crypto_io_channel *crypto_ch = crypto_io->crypto_ch;
 
 	if (crypto_io->aux_buf_raw) {
@@ -196,7 +196,7 @@ static void
 vbdev_crypto_resubmit_io(void *arg)
 {
 	struct spdk_bdev_io *bdev_io = (struct spdk_bdev_io *)arg;
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	switch (crypto_io->resubmit_state) {
 	case CRYPTO_IO_ENCRYPT_DONE:
@@ -213,7 +213,7 @@ vbdev_crypto_resubmit_io(void *arg)
 static void
 vbdev_crypto_queue_io(struct spdk_bdev_io *bdev_io, enum crypto_io_resubmit_state state)
 {
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	int rc;
 
 	crypto_io->bdev_io_wait.bdev = bdev_io->bdev;
@@ -232,7 +232,7 @@ vbdev_crypto_queue_io(struct spdk_bdev_io *bdev_io, enum crypto_io_resubmit_stat
 static void
 crypto_read(struct crypto_io_channel *crypto_ch, struct spdk_bdev_io *bdev_io)
 {
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct vbdev_crypto *crypto_bdev = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_crypto,
 					   crypto_bdev);
 	struct spdk_bdev_ext_io_opts opts = {};
@@ -267,7 +267,7 @@ crypto_read_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
 		       bool success)
 {
 	struct crypto_io_channel *crypto_ch = spdk_io_channel_get_ctx(ch);
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	uint32_t blocklen = crypto_io->crypto_bdev->crypto_bdev.blocklen;
 	int rc;
 
@@ -314,7 +314,7 @@ vbdev_crypto_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bde
 	struct vbdev_crypto *crypto_bdev = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_crypto,
 					   crypto_bdev);
 	struct crypto_io_channel *crypto_ch = spdk_io_channel_get_ctx(ch);
-	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)bdev_io->driver_ctx;
+	struct crypto_bdev_io *crypto_io = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	int rc = 0;
 
 	memset(crypto_io, 0, sizeof(struct crypto_bdev_io));

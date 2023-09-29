@@ -229,7 +229,7 @@ vbdev_error_corrupt_io_data(struct spdk_bdev_io *bdev_io, uint64_t corrupt_offse
 static void
 vbdev_error_complete_request(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
-	struct error_io *error_io = (struct error_io *)bdev_io->driver_ctx;
+	struct error_io *error_io = (struct error_io *)spdk_bdev_io_to_ctx(bdev_io);
 	int status = success ? SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED;
 	struct error_disk *error_disk = bdev_io->bdev->ctxt;
 	struct error_channel *ch = spdk_io_channel_get_ctx(spdk_bdev_io_get_io_channel(bdev_io));
@@ -251,7 +251,7 @@ vbdev_error_complete_request(struct spdk_bdev_io *bdev_io, bool success, void *c
 static void
 vbdev_error_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
 {
-	struct error_io *error_io = (struct error_io *)bdev_io->driver_ctx;
+	struct error_io *error_io = (struct error_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct error_channel *ch = spdk_io_channel_get_ctx(_ch);
 	struct error_disk *error_disk = bdev_io->bdev->ctxt;
 	int rc;

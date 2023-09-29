@@ -898,7 +898,7 @@ lvol_read(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 	uint64_t start_page, num_pages;
 	struct spdk_lvol *lvol = bdev_io->bdev->ctxt;
 	struct spdk_blob *blob = lvol->blob;
-	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)bdev_io->driver_ctx;
+	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	start_page = bdev_io->u.bdev.offset_blocks;
 	num_pages = bdev_io->u.bdev.num_blocks;
@@ -916,7 +916,7 @@ lvol_write(struct spdk_lvol *lvol, struct spdk_io_channel *ch, struct spdk_bdev_
 {
 	uint64_t start_page, num_pages;
 	struct spdk_blob *blob = lvol->blob;
-	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)bdev_io->driver_ctx;
+	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	start_page = bdev_io->u.bdev.offset_blocks;
 	num_pages = bdev_io->u.bdev.num_blocks;

@@ -129,14 +129,14 @@ bdev_xnvme_destruct(void *ctx)
 static void
 _xnvme_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
-	struct bdev_xnvme_task *xnvme_task = (struct bdev_xnvme_task *)bdev_io->driver_ctx;
+	struct bdev_xnvme_task *xnvme_task = (struct bdev_xnvme_task *)spdk_bdev_io_to_ctx(bdev_io);
 	struct bdev_xnvme *xnvme = (struct bdev_xnvme *)bdev_io->bdev->ctxt;
 	struct bdev_xnvme_io_channel *xnvme_ch = spdk_io_channel_get_ctx(ch);
 	struct xnvme_cmd_ctx *ctx = xnvme_queue_get_cmd_ctx(xnvme_ch->queue);
 	int err;
 
 	SPDK_DEBUGLOG(xnvme, "bdev_io : %p, iov_cnt : %d, bdev_xnvme_task : %p\n",
-		      bdev_io, bdev_io->u.bdev.iovcnt, (struct bdev_xnvme_task *)bdev_io->driver_ctx);
+		      bdev_io, bdev_io->u.bdev.iovcnt, (struct bdev_xnvme_task *)spdk_bdev_io_to_ctx(bdev_io));
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_READ:

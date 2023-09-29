@@ -87,7 +87,7 @@ bdev_null_abort_io(struct null_io_channel *ch, struct spdk_bdev_io *bio_to_abort
 static void
 bdev_null_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
 {
-	struct null_bdev_io *null_io = (struct null_bdev_io *)bdev_io->driver_ctx;
+	struct null_bdev_io *null_io = (struct null_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct null_io_channel *ch = spdk_io_channel_get_ctx(_ch);
 	struct spdk_bdev *bdev = bdev_io->bdev;
 	struct spdk_dif_ctx dif_ctx;

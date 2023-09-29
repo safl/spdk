@@ -215,7 +215,7 @@ _bdev_daos_io_complete(void *bdev_daos_task)
 static void
 bdev_daos_io_complete(struct spdk_bdev_io *bdev_io, int io_status)
 {
-	struct bdev_daos_task *task = (struct bdev_daos_task *)bdev_io->driver_ctx;
+	struct bdev_daos_task *task = (struct bdev_daos_task *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_thread *current_thread = spdk_get_thread();
 
 	assert(task->submit_td != NULL);
@@ -334,7 +334,7 @@ bdev_daos_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
 
 	rc = bdev_daos_readv((struct bdev_daos *)bdev_io->bdev->ctxt,
 			     dch,
-			     (struct bdev_daos_task *)bdev_io->driver_ctx,
+			     (struct bdev_daos_task *)spdk_bdev_io_to_ctx(bdev_io),
 			     bdev_io->u.bdev.iovs,
 			     bdev_io->u.bdev.iovcnt,
 			     bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen,
@@ -432,7 +432,7 @@ _bdev_daos_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_
 	case SPDK_BDEV_IO_TYPE_WRITE:
 		rc = bdev_daos_writev((struct bdev_daos *)bdev_io->bdev->ctxt,
 				      dch,
-				      (struct bdev_daos_task *)bdev_io->driver_ctx,
+				      (struct bdev_daos_task *)spdk_bdev_io_to_ctx(bdev_io),
 				      bdev_io->u.bdev.iovs,
 				      bdev_io->u.bdev.iovcnt,
 				      bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen,
@@ -446,7 +446,7 @@ _bdev_daos_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_
 	case SPDK_BDEV_IO_TYPE_RESET:
 		/* Can't cancel in-flight requests, but can wait for their completions */
 		bdev_daos_reset((struct bdev_daos *)bdev_io->bdev->ctxt,
-				(struct bdev_daos_task *)bdev_io->driver_ctx);
+				(struct bdev_daos_task *)spdk_bdev_io_to_ctx(bdev_io));
 		break;
 
 	case SPDK_BDEV_IO_TYPE_FLUSH:
@@ -478,7 +478,7 @@ _bdev_daos_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_
 static void
 bdev_daos_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
-	struct bdev_daos_task *task = (struct bdev_daos_task *)bdev_io->driver_ctx;
+	struct bdev_daos_task *task = (struct bdev_daos_task *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_thread *submit_td = spdk_io_channel_get_thread(ch);
 
 	assert(task != NULL);

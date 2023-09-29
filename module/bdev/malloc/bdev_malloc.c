@@ -458,7 +458,7 @@ bdev_malloc_copy(struct malloc_disk *mdisk, struct spdk_io_channel *ch,
 static int
 _bdev_malloc_submit_request(struct malloc_channel *mch, struct spdk_bdev_io *bdev_io)
 {
-	struct malloc_task *task = (struct malloc_task *)bdev_io->driver_ctx;
+	struct malloc_task *task = (struct malloc_task *)spdk_bdev_io_to_ctx(bdev_io);
 	struct malloc_disk *disk = bdev_io->bdev->ctxt;
 	uint32_t block_size = bdev_io->bdev->blocklen;
 	int rc;
@@ -550,7 +550,7 @@ bdev_malloc_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev
 	struct malloc_channel *mch = spdk_io_channel_get_ctx(ch);
 
 	if (_bdev_malloc_submit_request(mch, bdev_io) != 0) {
-		malloc_complete_task((struct malloc_task *)bdev_io->driver_ctx, mch,
+		malloc_complete_task((struct malloc_task *)spdk_bdev_io_to_ctx(bdev_io), mch,
 				     SPDK_BDEV_IO_STATUS_FAILED);
 	}
 }
