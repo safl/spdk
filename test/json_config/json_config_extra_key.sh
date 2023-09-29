@@ -16,7 +16,7 @@ source "$rootdir/test/json_config/common.sh"
 
 declare -A app_pid=([target]="")
 declare -A app_socket=([target]='/var/tmp/spdk_tgt.sock')
-declare -A app_params=([target]='-m 0x1 -s 1024')
+declare -A app_params=([target]='-m 0x1 -s 1536')
 declare -A configs_path=([target]="$rootdir/test/json_config/extra_key.json")
 
 trap 'on_error_exit "${FUNCNAME}" "${LINENO}"' ERR

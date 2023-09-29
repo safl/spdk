@@ -346,6 +346,7 @@ submit_io(struct raid_io_info *io_info, struct spdk_bdev_desc *desc,
 	}
 
 	bdev_io = calloc(1, sizeof(*bdev_io));
+	spdk_bdev_io_init_stack(bdev_io);
 	SPDK_CU_ASSERT_FATAL(bdev_io != NULL);
 	bdev_io->bdev = bdev;
 	bdev_io->internal.cb = cb;

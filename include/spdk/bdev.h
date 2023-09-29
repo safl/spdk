@@ -215,8 +215,10 @@ struct spdk_bdev_opts {
 	/* Size of the per-thread iobuf caches */
 	uint32_t iobuf_small_cache_size;
 	uint32_t iobuf_large_cache_size;
+
+	uint32_t bdev_io_stack_size;
 } __attribute__((packed));
-SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_opts) == 32, "Incorrect size");
+SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_opts) == 36, "Incorrect size");
 
 /**
  * Union for controller attributes field, to list whether bdev supports fdp etc.

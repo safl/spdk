@@ -1728,6 +1728,7 @@ static void
 ut_lvol_read_write(void)
 {
 	g_io = calloc(1, sizeof(struct spdk_bdev_io) + vbdev_lvs_get_ctx_size());
+	spdk_bdev_io_init_stack(g_io);
 	SPDK_CU_ASSERT_FATAL(g_io != NULL);
 	g_lvol = calloc(1, sizeof(struct spdk_lvol));
 	SPDK_CU_ASSERT_FATAL(g_lvol != NULL);
@@ -1763,6 +1764,7 @@ ut_vbdev_lvol_submit_request(void)
 {
 	struct spdk_lvol request_lvol = {};
 	g_io = calloc(1, sizeof(struct spdk_bdev_io));
+	spdk_bdev_io_init_stack(g_io);
 	SPDK_CU_ASSERT_FATAL(g_io != NULL);
 	g_io->bdev = &g_bdev;
 
@@ -1828,6 +1830,7 @@ static void
 ut_lvol_seek(void)
 {
 	g_io = calloc(1, sizeof(struct spdk_bdev_io) + vbdev_lvs_get_ctx_size());
+	spdk_bdev_io_init_stack(g_io);
 	SPDK_CU_ASSERT_FATAL(g_io != NULL);
 	g_lvol = calloc(1, sizeof(struct spdk_lvol));
 	SPDK_CU_ASSERT_FATAL(g_lvol != NULL);

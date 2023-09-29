@@ -219,6 +219,7 @@ test_setup(void)
 	TAILQ_INIT(&g_comp_bdev.queued_comp_ops);
 
 	g_bdev_io = calloc(1, sizeof(struct spdk_bdev_io) + sizeof(struct comp_bdev_io));
+	spdk_bdev_io_init_stack(g_bdev_io);
 	g_bdev_io->u.bdev.iovs = calloc(128, sizeof(struct iovec));
 	g_bdev_io->bdev = &g_comp_bdev.comp_bdev;
 	g_io_ch = calloc(1, sizeof(struct spdk_io_channel) + sizeof(struct comp_io_channel));

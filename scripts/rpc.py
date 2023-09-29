@@ -227,12 +227,14 @@ if __name__ == "__main__":
                                   bdev_io_cache_size=args.bdev_io_cache_size,
                                   bdev_auto_examine=args.bdev_auto_examine,
                                   iobuf_small_cache_size=args.iobuf_small_cache_size,
-                                  iobuf_large_cache_size=args.iobuf_large_cache_size)
+                                  iobuf_large_cache_size=args.iobuf_large_cache_size,
+                                  bdev_io_stack_size=args.bdev_io_stack_size)
 
     p = subparsers.add_parser('bdev_set_options',
                               help="""Set options of bdev subsystem""")
     p.add_argument('-p', '--bdev-io-pool-size', help='Number of bdev_io structures in shared buffer pool', type=int)
     p.add_argument('-c', '--bdev-io-cache-size', help='Maximum number of bdev_io structures cached per thread', type=int)
+    p.add_argument('-k', '--bdev-io-stack-size', help='Extra per-bdev space in each spdk_bdev_io', type=int)
     group = p.add_mutually_exclusive_group()
     group.add_argument('-e', '--enable-auto-examine', dest='bdev_auto_examine', help='Allow to auto examine', action='store_true')
     group.add_argument('-d', '--disable-auto-examine', dest='bdev_auto_examine', help='Not allow to auto examine', action='store_false')
