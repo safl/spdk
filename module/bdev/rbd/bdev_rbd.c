@@ -487,7 +487,7 @@ _bdev_rbd_io_complete(void *_rbd_io)
 static void
 bdev_rbd_io_complete(struct spdk_bdev_io *bdev_io, enum spdk_bdev_io_status status)
 {
-	struct bdev_rbd_io *rbd_io = (struct bdev_rbd_io *)bdev_io->driver_ctx;
+	struct bdev_rbd_io *rbd_io = (struct bdev_rbd_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_thread *current_thread = spdk_get_thread();
 
 	rbd_io->status = status;
@@ -508,7 +508,7 @@ bdev_rbd_finish_aiocb(rbd_completion_t cb, void *arg)
 	enum spdk_bdev_io_status bio_status;
 
 	bdev_io = rbd_aio_get_arg(cb);
-	rbd_io = (struct bdev_rbd_io *)bdev_io->driver_ctx;
+	rbd_io = (struct bdev_rbd_io *)spdk_bdev_io_to_ctx(bdev_io);
 	io_status = rbd_aio_get_return_value(cb);
 	bio_status = SPDK_BDEV_IO_STATUS_SUCCESS;
 
@@ -534,7 +534,7 @@ _bdev_rbd_start_aio(struct bdev_rbd *disk, struct spdk_bdev_io *bdev_io,
 		    struct iovec *iov, int iovcnt, uint64_t offset, size_t len)
 {
 	int ret;
-	struct bdev_rbd_io *rbd_io = (struct bdev_rbd_io *)bdev_io->driver_ctx;
+	struct bdev_rbd_io *rbd_io = (struct bdev_rbd_io *)spdk_bdev_io_to_ctx(bdev_io);
 	rbd_image_t image = disk->image;
 
 	ret = rbd_aio_create_completion(bdev_io, bdev_rbd_finish_aiocb,
@@ -761,7 +761,7 @@ static void
 bdev_rbd_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
 	struct spdk_thread *submit_td = spdk_io_channel_get_thread(ch);
-	struct bdev_rbd_io *rbd_io = (struct bdev_rbd_io *)bdev_io->driver_ctx;
+	struct bdev_rbd_io *rbd_io = (struct bdev_rbd_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	rbd_io->submit_td = submit_td;
 	switch (bdev_io->type) {

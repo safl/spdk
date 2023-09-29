@@ -1445,6 +1445,12 @@ spdk_bdev_io_from_ctx(void *ctx)
 	return SPDK_CONTAINEROF(ctx, struct spdk_bdev_io, driver_ctx);
 }
 
+static inline void *
+spdk_bdev_io_to_ctx(struct spdk_bdev_io *bdev_io)
+{
+	return bdev_io->driver_ctx;
+}
+
 struct spdk_bdev_part_base;
 
 /**

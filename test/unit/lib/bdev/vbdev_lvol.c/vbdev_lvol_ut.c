@@ -742,7 +742,7 @@ spdk_blob_io_writev_ext(struct spdk_blob *blob, struct spdk_io_channel *channel,
 			spdk_blob_op_complete cb_fn, void *cb_arg,
 			struct spdk_blob_ext_io_opts *io_opts)
 {
-	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)g_io->driver_ctx;
+	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)spdk_bdev_io_to_ctx(g_io);
 
 	CU_ASSERT(blob == NULL);
 	CU_ASSERT(channel == g_ch);
@@ -771,7 +771,7 @@ spdk_blob_io_readv_ext(struct spdk_blob *blob, struct spdk_io_channel *channel,
 		       spdk_blob_op_complete cb_fn, void *cb_arg,
 		       struct spdk_blob_ext_io_opts *io_opts)
 {
-	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)g_io->driver_ctx;
+	struct vbdev_lvol_io *lvol_io = (struct vbdev_lvol_io *)spdk_bdev_io_to_ctx(g_io);
 
 	CU_ASSERT(blob == NULL);
 	CU_ASSERT(channel == g_ch);

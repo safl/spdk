@@ -504,7 +504,7 @@ _bdev_iscsi_reset(void *_bdev_io)
 	int rc;
 	struct spdk_bdev_io *bdev_io = _bdev_io;
 	struct bdev_iscsi_lun *lun = (struct bdev_iscsi_lun *)bdev_io->bdev->ctxt;
-	struct bdev_iscsi_io *iscsi_io = (struct bdev_iscsi_io *)bdev_io->driver_ctx;
+	struct bdev_iscsi_io *iscsi_io = (struct bdev_iscsi_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct iscsi_context *context = lun->context;
 
 	rc = iscsi_task_mgmt_lun_reset_async(context, lun->lun_id,
@@ -586,7 +586,7 @@ bdev_iscsi_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
 	}
 
 	bdev_iscsi_readv((struct bdev_iscsi_lun *)bdev_io->bdev->ctxt,
-			 (struct bdev_iscsi_io *)bdev_io->driver_ctx,
+			 (struct bdev_iscsi_io *)spdk_bdev_io_to_ctx(bdev_io),
 			 bdev_io->u.bdev.iovs,
 			 bdev_io->u.bdev.iovcnt,
 			 bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen,
@@ -597,7 +597,7 @@ static void
 _bdev_iscsi_submit_request(void *_bdev_io)
 {
 	struct spdk_bdev_io *bdev_io = _bdev_io;
-	struct bdev_iscsi_io *iscsi_io = (struct bdev_iscsi_io *)bdev_io->driver_ctx;
+	struct bdev_iscsi_io *iscsi_io = (struct bdev_iscsi_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct bdev_iscsi_lun *lun = (struct bdev_iscsi_lun *)bdev_io->bdev->ctxt;
 
 	switch (bdev_io->type) {
@@ -637,7 +637,7 @@ static void
 bdev_iscsi_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
 {
 	struct spdk_thread *submit_td = spdk_io_channel_get_thread(_ch);
-	struct bdev_iscsi_io *iscsi_io = (struct bdev_iscsi_io *)bdev_io->driver_ctx;
+	struct bdev_iscsi_io *iscsi_io = (struct bdev_iscsi_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct bdev_iscsi_lun *lun = (struct bdev_iscsi_lun *)bdev_io->bdev->ctxt;
 
 	iscsi_io->lun = lun;

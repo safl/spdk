@@ -237,7 +237,7 @@ test_setup(void)
 	g_base_io->bdev = &g_crypto_bdev.crypto_bdev;
 	g_io_ch = calloc(1, sizeof(struct spdk_io_channel) + sizeof(struct crypto_io_channel));
 	g_crypto_ch = (struct crypto_io_channel *)spdk_io_channel_get_ctx(g_io_ch);
-	g_io_ctx = (struct crypto_bdev_io *)g_base_io->driver_ctx;
+	g_io_ctx = (struct crypto_bdev_io *)spdk_bdev_io_to_ctx(g_base_io);
 	memset(&g_crypto_bdev, 0, sizeof(struct vbdev_crypto));
 	memset(&g_crypto_bdev_opts, 0, sizeof(struct vbdev_crypto_opts));
 	g_crypto_bdev.crypto_bdev.blocklen = 512;

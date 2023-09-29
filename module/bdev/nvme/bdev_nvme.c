@@ -918,7 +918,7 @@ static inline void
 __bdev_nvme_io_complete(struct spdk_bdev_io *bdev_io, enum spdk_bdev_io_status status,
 			const struct spdk_nvme_cpl *cpl)
 {
-	spdk_trace_record(TRACE_BDEV_NVME_IO_DONE, 0, 0, (uintptr_t)bdev_io->driver_ctx,
+	spdk_trace_record(TRACE_BDEV_NVME_IO_DONE, 0, 0, (uintptr_t)spdk_bdev_io_to_ctx(bdev_io),
 			  (uintptr_t)bdev_io);
 	if (cpl) {
 		spdk_bdev_io_complete_nvme_status(bdev_io, cpl->cdw0, cpl->status.sct, cpl->status.sc);
@@ -1231,7 +1231,7 @@ any_io_path_may_become_available(struct nvme_bdev_channel *nbdev_ch)
 static void
 bdev_nvme_retry_io(struct nvme_bdev_channel *nbdev_ch, struct spdk_bdev_io *bdev_io)
 {
-	struct nvme_bdev_io *nbdev_io = (struct nvme_bdev_io *)bdev_io->driver_ctx;
+	struct nvme_bdev_io *nbdev_io = (struct nvme_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_io_channel *ch;
 
 	if (nbdev_io->io_path != NULL && nvme_io_path_is_available(nbdev_io->io_path)) {
@@ -3088,7 +3088,7 @@ static void
 bdev_nvme_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
 		     bool success)
 {
-	struct nvme_bdev_io *bio = (struct nvme_bdev_io *)bdev_io->driver_ctx;
+	struct nvme_bdev_io *bio = (struct nvme_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	int ret;
 
 	if (!success) {
@@ -3121,7 +3121,7 @@ exit:
 static inline void
 _bdev_nvme_submit_request(struct nvme_bdev_channel *nbdev_ch, struct spdk_bdev_io *bdev_io)
 {
-	struct nvme_bdev_io *nbdev_io = (struct nvme_bdev_io *)bdev_io->driver_ctx;
+	struct nvme_bdev_io *nbdev_io = (struct nvme_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_bdev *bdev = bdev_io->bdev;
 	struct nvme_bdev_io *nbdev_io_to_abort;
 	int rc = 0;
@@ -3253,7 +3253,7 @@ _bdev_nvme_submit_request(struct nvme_bdev_channel *nbdev_ch, struct spdk_bdev_i
 		break;
 	case SPDK_BDEV_IO_TYPE_ABORT:
 		nbdev_io->io_path = NULL;
-		nbdev_io_to_abort = (struct nvme_bdev_io *)bdev_io->u.abort.bio_to_abort->driver_ctx;
+		nbdev_io_to_abort = (struct nvme_bdev_io *)spdk_bdev_io_to_ctx(bdev_io->u.abort.bio_to_abort);
 		bdev_nvme_abort(nbdev_ch,
 				nbdev_io,
 				nbdev_io_to_abort);
@@ -3279,7 +3279,7 @@ static void
 bdev_nvme_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
 	struct nvme_bdev_channel *nbdev_ch = spdk_io_channel_get_ctx(ch);
-	struct nvme_bdev_io *nbdev_io = (struct nvme_bdev_io *)bdev_io->driver_ctx;
+	struct nvme_bdev_io *nbdev_io = (struct nvme_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	if (spdk_likely(nbdev_io->submit_tsc == 0)) {
 		nbdev_io->submit_tsc = spdk_bdev_io_get_submit_tsc(bdev_io);

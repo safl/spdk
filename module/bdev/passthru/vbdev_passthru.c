@@ -148,7 +148,7 @@ _pt_complete_io(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_io *orig_io = cb_arg;
 	int status = success ? SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED;
-	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)orig_io->driver_ctx;
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(orig_io);
 
 	/* We setup this value in the submission routine, just showing here that it is
 	 * passed back to us.
@@ -170,7 +170,7 @@ _pt_complete_zcopy_io(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_io *orig_io = cb_arg;
 	int status = success ? SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED;
-	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)orig_io->driver_ctx;
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(orig_io);
 
 	/* We setup this value in the submission routine, just showing here that it is
 	 * passed back to us.
@@ -192,7 +192,7 @@ static void
 vbdev_passthru_resubmit_io(void *arg)
 {
 	struct spdk_bdev_io *bdev_io = (struct spdk_bdev_io *)arg;
-	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)bdev_io->driver_ctx;
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 
 	vbdev_passthru_submit_request(io_ctx->ch, bdev_io);
 }
@@ -200,7 +200,7 @@ vbdev_passthru_resubmit_io(void *arg)
 static void
 vbdev_passthru_queue_io(struct spdk_bdev_io *bdev_io)
 {
-	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)bdev_io->driver_ctx;
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct pt_io_channel *pt_ch = spdk_io_channel_get_ctx(io_ctx->ch);
 	int rc;
 
@@ -237,7 +237,7 @@ pt_read_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io, boo
 	struct vbdev_passthru *pt_node = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_passthru,
 					 pt_bdev);
 	struct pt_io_channel *pt_ch = spdk_io_channel_get_ctx(ch);
-	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)bdev_io->driver_ctx;
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_bdev_ext_io_opts io_opts;
 	int rc;
 
@@ -272,7 +272,7 @@ vbdev_passthru_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *b
 {
 	struct vbdev_passthru *pt_node = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_passthru, pt_bdev);
 	struct pt_io_channel *pt_ch = spdk_io_channel_get_ctx(ch);
-	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)bdev_io->driver_ctx;
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_bdev_ext_io_opts io_opts;
 	int rc = 0;
 

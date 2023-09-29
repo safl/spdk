@@ -209,7 +209,7 @@ stub_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
 	}
 
 	if (ch->avail_cnt > 0) {
-		TAILQ_INSERT_TAIL(&ch->outstanding_io, (struct ut_bdev_io *)bdev_io->driver_ctx, link);
+		TAILQ_INSERT_TAIL(&ch->outstanding_io, (struct ut_bdev_io *)spdk_bdev_io_to_ctx(bdev_io), link);
 		ch->outstanding_cnt++;
 		ch->avail_cnt--;
 	} else {

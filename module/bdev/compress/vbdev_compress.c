@@ -107,7 +107,7 @@ static void
 reduce_rw_blocks_cb(void *arg, int reduce_errno)
 {
 	struct spdk_bdev_io *bdev_io = arg;
-	struct comp_bdev_io *io_ctx = (struct comp_bdev_io *)bdev_io->driver_ctx;
+	struct comp_bdev_io *io_ctx = (struct comp_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct spdk_io_channel *ch = spdk_io_channel_from_ctx(io_ctx->comp_ch);
 	struct spdk_thread *orig_thread;
 
@@ -229,7 +229,7 @@ comp_read_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io, b
 static void
 vbdev_compress_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
-	struct comp_bdev_io *io_ctx = (struct comp_bdev_io *)bdev_io->driver_ctx;
+	struct comp_bdev_io *io_ctx = (struct comp_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	struct vbdev_compress *comp_bdev = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_compress,
 					   comp_bdev);
 	struct comp_io_channel *comp_ch = spdk_io_channel_get_ctx(ch);

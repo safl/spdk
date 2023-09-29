@@ -441,7 +441,7 @@ bdev_virtio_init_io_vreq(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_i
 	struct virtio_scsi_cmd_req *req;
 	struct virtio_scsi_cmd_resp *resp;
 	struct virtio_scsi_disk *disk = (struct virtio_scsi_disk *)bdev_io->bdev;
-	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 
 	req = &io_ctx->req;
 	resp = &io_ctx->resp;
@@ -465,7 +465,7 @@ bdev_virtio_init_tmf_vreq(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_
 	struct virtio_scsi_ctrl_tmf_req *tmf_req;
 	struct virtio_scsi_ctrl_tmf_resp *tmf_resp;
 	struct virtio_scsi_disk *disk = SPDK_CONTAINEROF(bdev_io->bdev, struct virtio_scsi_disk, bdev);
-	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 
 	tmf_req = &io_ctx->tmf_req;
 	tmf_resp = &io_ctx->tmf_resp;
@@ -487,7 +487,7 @@ bdev_virtio_send_io(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
 	struct bdev_virtio_io_channel *virtio_channel = spdk_io_channel_get_ctx(ch);
 	struct virtqueue *vq = virtio_channel->vq;
-	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 	int rc;
 
 	rc = virtqueue_req_start(vq, bdev_io, bdev_io->u.bdev.iovcnt + 2);
@@ -765,7 +765,7 @@ get_scsi_status(struct virtio_scsi_cmd_resp *resp, int *sk, int *asc, int *ascq)
 static void
 bdev_virtio_io_cpl(struct spdk_bdev_io *bdev_io)
 {
-	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 	int sk, asc, ascq;
 
 	get_scsi_status(&io_ctx->resp, &sk, &asc, &ascq);
@@ -836,7 +836,7 @@ static void
 bdev_virtio_tmf_cpl_cb(void *ctx)
 {
 	struct spdk_bdev_io *bdev_io = ctx;
-	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 
 	if (io_ctx->tmf_resp.response == VIRTIO_SCSI_S_OK) {
 		spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
@@ -926,7 +926,7 @@ bdev_virtio_tmf_abort(struct spdk_bdev_io *bdev_io, int status)
 static int
 bdev_virtio_send_tmf_io(struct virtqueue *ctrlq, struct spdk_bdev_io *bdev_io)
 {
-	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_scsi_io_ctx *io_ctx = (struct virtio_scsi_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 	int rc;
 
 	rc = virtqueue_req_start(ctrlq, bdev_io, 2);

@@ -153,7 +153,7 @@ static void
 _vbdev_opal_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
 {
 	struct vbdev_opal_channel *ch = spdk_io_channel_get_ctx(_ch);
-	struct vbdev_opal_bdev_io *io_ctx = (struct vbdev_opal_bdev_io *)bdev_io->driver_ctx;
+	struct vbdev_opal_bdev_io *io_ctx = (struct vbdev_opal_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
 	int rc;
 
 	rc = spdk_bdev_part_submit_request(&ch->part_ch, bdev_io);

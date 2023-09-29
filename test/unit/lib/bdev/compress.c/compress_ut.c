@@ -224,7 +224,7 @@ test_setup(void)
 	g_io_ch = calloc(1, sizeof(struct spdk_io_channel) + sizeof(struct comp_io_channel));
 	g_io_ch->thread = thread;
 	g_comp_ch = (struct comp_io_channel *)spdk_io_channel_get_ctx(g_io_ch);
-	g_io_ctx = (struct comp_bdev_io *)g_bdev_io->driver_ctx;
+	g_io_ctx = (struct comp_bdev_io *)spdk_bdev_io_to_ctx(g_bdev_io);
 
 	g_io_ctx->comp_ch = g_comp_ch;
 	g_io_ctx->comp_bdev = &g_comp_bdev;

@@ -136,7 +136,7 @@ bdev_ftl_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
 		return;
 	}
 
-	rc = spdk_ftl_readv(ftl_bdev->dev, (struct ftl_io *)bdev_io->driver_ctx,
+	rc = spdk_ftl_readv(ftl_bdev->dev, (struct ftl_io *)spdk_bdev_io_to_ctx(bdev_io),
 			    ch,
 			    bdev_io->u.bdev.offset_blocks,
 			    bdev_io->u.bdev.num_blocks,
@@ -159,13 +159,13 @@ _bdev_ftl_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_i
 		return 0;
 
 	case SPDK_BDEV_IO_TYPE_WRITE:
-		return spdk_ftl_writev(ftl_bdev->dev, (struct ftl_io *)bdev_io->driver_ctx,
+		return spdk_ftl_writev(ftl_bdev->dev, (struct ftl_io *)spdk_bdev_io_to_ctx(bdev_io),
 				       ch, bdev_io->u.bdev.offset_blocks,
 				       bdev_io->u.bdev.num_blocks, bdev_io->u.bdev.iovs,
 				       bdev_io->u.bdev.iovcnt, bdev_ftl_cb, bdev_io);
 
 	case SPDK_BDEV_IO_TYPE_UNMAP:
-		return spdk_ftl_unmap(ftl_bdev->dev, (struct ftl_io *)bdev_io->driver_ctx,
+		return spdk_ftl_unmap(ftl_bdev->dev, (struct ftl_io *)spdk_bdev_io_to_ctx(bdev_io),
 				      ch, bdev_io->u.bdev.offset_blocks,
 				      bdev_io->u.bdev.num_blocks, bdev_ftl_cb, bdev_io);
 	case SPDK_BDEV_IO_TYPE_FLUSH:

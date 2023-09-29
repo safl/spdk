@@ -90,7 +90,7 @@ bdev_virtio_blk_init_io_vreq(struct spdk_io_channel *ch, struct spdk_bdev_io *bd
 	uint8_t *resp;
 	struct virtio_blk_discard_write_zeroes *desc;
 
-	struct virtio_blk_io_ctx *io_ctx = (struct virtio_blk_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_blk_io_ctx *io_ctx = (struct virtio_blk_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 
 	req = &io_ctx->req;
 	resp = &io_ctx->resp;
@@ -114,7 +114,7 @@ bdev_virtio_blk_send_io(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io
 {
 	struct bdev_virtio_blk_io_channel *virtio_channel = spdk_io_channel_get_ctx(ch);
 	struct virtqueue *vq = virtio_channel->vq;
-	struct virtio_blk_io_ctx *io_ctx = (struct virtio_blk_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_blk_io_ctx *io_ctx = (struct virtio_blk_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 	int rc;
 
 	rc = virtqueue_req_start(vq, bdev_io, bdev_io->u.bdev.iovcnt + 2);
@@ -316,7 +316,7 @@ static const struct spdk_bdev_fn_table virtio_fn_table = {
 static void
 bdev_virtio_io_cpl(struct spdk_bdev_io *bdev_io)
 {
-	struct virtio_blk_io_ctx *io_ctx = (struct virtio_blk_io_ctx *)bdev_io->driver_ctx;
+	struct virtio_blk_io_ctx *io_ctx = (struct virtio_blk_io_ctx *)spdk_bdev_io_to_ctx(bdev_io);
 
 	spdk_bdev_io_complete(bdev_io, io_ctx->resp == VIRTIO_BLK_S_OK ?
 			      SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED);
