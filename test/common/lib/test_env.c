@@ -310,6 +310,27 @@ spdk_mempool_create(const char *name, size_t count,
 	return (struct spdk_mempool *)mp;
 }
 
+DEFINE_RETURN_MOCK(spdk_mempool_create_ctor, struct spdk_mempool *);
+struct spdk_mempool *
+spdk_mempool_create_ctor(const char *name, size_t count,
+			 size_t ele_size, size_t cache_size, int numa_id,
+			 spdk_mempool_obj_cb_t *obj_init, void *obj_init_arg)
+{
+	struct test_mempool *mp;
+
+	HANDLE_RETURN_MOCK(spdk_mempool_create);
+
+	mp = calloc(1, sizeof(*mp));
+	if (mp == NULL) {
+		return NULL;
+	}
+
+	mp->count = count;
+	mp->ele_size = ele_size;
+
+	return (struct spdk_mempool *)mp;
+}
+
 void
 spdk_mempool_free(struct spdk_mempool *_mp)
 {
