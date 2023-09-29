@@ -569,6 +569,7 @@ ut_alloc_bdev_io(enum spdk_bdev_io_type type, struct nvme_bdev *nbdev,
 	bdev_io->type = type;
 	bdev_io->bdev = &nbdev->disk;
 	bdev_io->internal.ch = (struct spdk_bdev_channel *)ch;
+	spdk_bdev_io_init_stack(bdev_io);
 
 	return bdev_io;
 }

@@ -2529,6 +2529,7 @@ bdev_io_cache_size      | Optional | number      | Maximum number of spdk_bdev_i
 bdev_auto_examine       | Optional | boolean     | If set to false, the bdev layer will not examine every disks automatically
 iobuf_small_cache_size  | Optional | number      | Size of the small iobuf per thread cache
 iobuf_large_cache_size  | Optional | number      | Size of the large iobuf per thread cache
+bdev_io_stack_size      | Optional | number      | The size, in bytes, of the region that holds per-bdev context in each I/O
 
 #### Example
 
