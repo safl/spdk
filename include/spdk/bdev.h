@@ -138,6 +138,18 @@ enum spdk_bdev_qos_rate_limit_type {
 	SPDK_BDEV_QOS_NUM_RATE_LIMIT_TYPES
 };
 
+/** Placement types */
+enum spdk_bdev_placement_type {
+	/* Not using any placement type */
+	SPDK_BDEV_PLACEMENT_NONE = 0,
+	/* Utilizing the Flexible Data Placement placement id */
+	SPDK_BDEV_PLACEMENT_FDP = 1,
+	/* Utilizing NVMe stream identifiers */
+	SPDK_BDEV_PLACEMENT_STREAM = 2,
+	/* Utilizing Key Per IO */
+	SPDK_BDEV_PLACEMENT_KPIO = 3,
+};
+
 /**
  * Block device completion callback.
  *
@@ -225,8 +237,17 @@ struct spdk_bdev_ext_io_opts {
 	 * request is submitted.
 	 */
 	struct spdk_accel_sequence *accel_sequence;
+	/**
+	 * Specifies which (if any) placement id is utilized by the IO
+	 */
+	enum spdk_bdev_placement_type placement_type;
+	/**
+	 * Hint given to the bdev layer on how the user data should be stored (e.g. NVMe stream id, Flexible Data Placement placement
+	 * ids, Key Per IO keytags)
+	 */
+	uint64_t placement_id;
 } __attribute__((packed));
-SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_ext_io_opts) == 40, "Incorrect size");
+SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_ext_io_opts) == 52, "Incorrect size");
 
 /**
  * Get the options for the bdev module.

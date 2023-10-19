@@ -403,6 +403,7 @@ static int bdev_readv_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io
 static int bdev_writev_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 				      struct iovec *iov, int iovcnt, void *md_buf,
 				      uint64_t offset_blocks, uint64_t num_blocks,
+				      enum spdk_bdev_placement_type placement_type, uint64_t placement_id,
 				      struct spdk_memory_domain *domain, void *domain_ctx,
 				      struct spdk_accel_sequence *seq,
 				      spdk_bdev_io_completion_cb cb, void *cb_arg);
@@ -2908,7 +2909,8 @@ bdev_io_split_submit(struct spdk_bdev_io *bdev_io, struct iovec *iov, int iovcnt
 		rc = bdev_writev_blocks_with_md(bdev_io->internal.desc,
 						spdk_io_channel_from_ctx(bdev_io->internal.ch),
 						iov, iovcnt, md_buf, current_offset,
-						num_blocks, bdev_io->internal.memory_domain,
+						num_blocks, bdev_io->u.bdev.placement_type, bdev_io->u.bdev.placement_id,
+						bdev_io->internal.memory_domain,
 						bdev_io->internal.memory_domain_ctx, NULL,
 						bdev_io_split_done, bdev_io);
 		break;
@@ -5409,6 +5411,7 @@ static int
 bdev_writev_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 			   struct iovec *iov, int iovcnt, void *md_buf,
 			   uint64_t offset_blocks, uint64_t num_blocks,
+			   enum spdk_bdev_placement_type placement_type, uint64_t placement_id,
 			   struct spdk_memory_domain *domain, void *domain_ctx,
 			   struct spdk_accel_sequence *seq,
 			   spdk_bdev_io_completion_cb cb, void *cb_arg)
@@ -5443,6 +5446,8 @@ bdev_writev_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_channel *
 	bdev_io->internal.memory_domain_ctx = domain_ctx;
 	bdev_io->internal.accel_sequence = seq;
 	bdev_io->internal.has_accel_sequence = seq != NULL;
+	bdev_io->u.bdev.placement_type = placement_type;
+	bdev_io->u.bdev.placement_id = placement_id;
 	bdev_io->u.bdev.memory_domain = domain;
 	bdev_io->u.bdev.memory_domain_ctx = domain_ctx;
 	bdev_io->u.bdev.accel_sequence = seq;
@@ -5475,7 +5480,7 @@ spdk_bdev_writev_blocks(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 			spdk_bdev_io_completion_cb cb, void *cb_arg)
 {
 	return bdev_writev_blocks_with_md(desc, ch, iov, iovcnt, NULL, offset_blocks,
-					  num_blocks, NULL, NULL, NULL, cb, cb_arg);
+					  num_blocks, SPDK_BDEV_PLACEMENT_NONE, 0, NULL, NULL, NULL, cb, cb_arg);
 }
 
 int
@@ -5493,7 +5498,7 @@ spdk_bdev_writev_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_chan
 	}
 
 	return bdev_writev_blocks_with_md(desc, ch, iov, iovcnt, md_buf, offset_blocks,
-					  num_blocks, NULL, NULL, NULL, cb, cb_arg);
+					  num_blocks, SPDK_BDEV_PLACEMENT_NONE, 0, NULL, NULL, NULL, cb, cb_arg);
 }
 
 int
@@ -5521,6 +5526,8 @@ spdk_bdev_writev_blocks_ext(struct spdk_bdev_desc *desc, struct spdk_io_channel 
 	}
 
 	return bdev_writev_blocks_with_md(desc, ch, iov, iovcnt, md, offset_blocks, num_blocks,
+					  bdev_get_ext_io_opt(opts, placement_type, SPDK_BDEV_PLACEMENT_NONE),
+					  bdev_get_ext_io_opt(opts, placement_id, 0),
 					  bdev_get_ext_io_opt(opts, memory_domain, NULL),
 					  bdev_get_ext_io_opt(opts, memory_domain_ctx, NULL),
 					  bdev_get_ext_io_opt(opts, accel_sequence, NULL),

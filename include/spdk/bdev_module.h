@@ -587,6 +587,11 @@ struct spdk_bdev {
 	 */
 	bool media_events;
 
+	/**
+	 * Specifies which (if any) placement id is supported by the bdev
+	 */
+	enum spdk_bdev_placement_type placement_type;
+
 	/* Upon receiving a reset request, this is the amount of time in seconds
 	 * to wait for all I/O to complete before moving forward with the reset.
 	 * If all I/O completes prior to this time out, the reset will be skipped.
@@ -805,6 +810,10 @@ struct spdk_bdev_io {
 			/** Memory domain and its context to be used by bdev modules */
 			struct spdk_memory_domain *memory_domain;
 			void *memory_domain_ctx;
+
+			/** Placement ID type and usage */
+			enum spdk_bdev_placement_type placement_type;
+			uint64_t placement_id;
 
 			/* Sequence of accel operations */
 			struct spdk_accel_sequence *accel_sequence;
