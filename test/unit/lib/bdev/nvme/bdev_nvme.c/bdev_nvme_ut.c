@@ -298,6 +298,14 @@ struct spdk_nvme_probe_ctx {
 	struct spdk_nvme_ctrlr		*init_ctrlr;
 };
 
+struct spdk_nvme_fdp_data
+spdk_nvme_ns_get_fdp_data(struct spdk_nvme_ns *ns)
+{
+	struct spdk_nvme_fdp_data data = { 0 };
+
+	return data;
+}
+
 uint32_t
 spdk_nvme_ctrlr_get_first_active_ns(struct spdk_nvme_ctrlr *ctrlr)
 {

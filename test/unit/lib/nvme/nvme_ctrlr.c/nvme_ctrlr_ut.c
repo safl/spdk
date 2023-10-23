@@ -331,6 +331,14 @@ spdk_nvme_ctrlr_cmd_get_feature(struct spdk_nvme_ctrlr *ctrlr, uint8_t feature,
 	return 0;
 }
 
+int
+nvme_ctrlr_cmd_get_fdp_feature(struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid,
+			      spdk_nvme_cmd_cb cb_fn, void *cb_arg)
+{
+	fake_cpl_sc(cb_fn, cb_arg);
+	return 0;
+}
+
 struct spdk_nvme_ana_page *g_ana_hdr;
 struct spdk_nvme_ana_group_descriptor **g_ana_descs;
 
@@ -3009,7 +3017,7 @@ test_nvme_ctrlr_identify_namespaces_iocs_specific_next(void)
 	ctrlr.opts.admin_timeout_ms = NVME_TIMEOUT_INFINITE;
 	rc = nvme_ctrlr_identify_namespaces_iocs_specific_next(&ctrlr, prev_nsid);
 	CU_ASSERT(rc == 0);
-	CU_ASSERT(ctrlr.state == NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES);
+	CU_ASSERT(ctrlr.state == NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT);
 	CU_ASSERT(ctrlr.state_timeout_tsc == NVME_TIMEOUT_INFINITE);
 
 	/* case 2: move on to the next active NS, and no namespace with (supported) iocs specific data found , expect: pass */
@@ -3024,7 +3032,7 @@ test_nvme_ctrlr_identify_namespaces_iocs_specific_next(void)
 	ns[1].id = 2;
 	rc = nvme_ctrlr_identify_namespaces_iocs_specific_next(&ctrlr, prev_nsid);
 	CU_ASSERT(rc == 0);
-	CU_ASSERT(ctrlr.state == NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES);
+	CU_ASSERT(ctrlr.state == NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT);
 	CU_ASSERT(ctrlr.state_timeout_tsc == NVME_TIMEOUT_INFINITE);
 
 	/* case 3: ns.csi is SPDK_NVME_CSI_ZNS, do not loop, expect: pass */

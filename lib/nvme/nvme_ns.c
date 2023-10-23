@@ -320,6 +320,12 @@ spdk_nvme_ns_get_md_size(struct spdk_nvme_ns *ns)
 	return ns->md_size;
 }
 
+struct spdk_nvme_fdp_data
+spdk_nvme_ns_get_fdp_data(struct spdk_nvme_ns *ns)
+{
+	return ns->nsdata_fdp;
+}
+
 uint32_t
 spdk_nvme_ns_get_format_index(const struct spdk_nvme_ns_data *nsdata)
 {

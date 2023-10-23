@@ -160,7 +160,8 @@ static int bdev_nvme_no_pi_readv(struct nvme_bdev_io *bio, struct iovec *iov, in
 				 void *md, uint64_t lba_count, uint64_t lba);
 static int bdev_nvme_writev(struct nvme_bdev_io *bio, struct iovec *iov, int iovcnt,
 			    void *md, uint64_t lba_count, uint64_t lba,
-			    uint32_t flags, struct spdk_memory_domain *domain, void *domain_ctx,
+			    uint32_t flags, enum spdk_bdev_placement_type placement_type, uint64_t placement_id,
+			    struct spdk_memory_domain *domain, void *domain_ctx,
 			    struct spdk_accel_sequence *seq);
 static int bdev_nvme_zone_appendv(struct nvme_bdev_io *bio, struct iovec *iov, int iovcnt,
 				  void *md, uint64_t lba_count,
@@ -2945,6 +2946,8 @@ _bdev_nvme_submit_request(struct nvme_bdev_channel *nbdev_ch, struct spdk_bdev_i
 				      bdev_io->u.bdev.num_blocks,
 				      bdev_io->u.bdev.offset_blocks,
 				      bdev->dif_check_flags,
+				      bdev_io->u.bdev.placement_type,
+				      bdev_io->u.bdev.placement_id,
 				      bdev_io->u.bdev.memory_domain,
 				      bdev_io->u.bdev.memory_domain_ctx,
 				      bdev_io->u.bdev.accel_sequence);
@@ -3979,6 +3982,7 @@ nvme_disk_create(struct spdk_bdev *disk, const char *base_name,
 	const struct spdk_nvme_ctrlr_data *cdata;
 	const struct spdk_nvme_ns_data	*nsdata;
 	const struct spdk_nvme_ctrlr_opts *opts;
+	struct spdk_nvme_fdp_data nsdata_fdp;
 	enum spdk_nvme_csi		csi;
 	uint32_t atomic_bs, phys_bs, bs;
 	char sn_tmp[SPDK_NVME_CTRLR_SN_LEN + 1] = {'\0'};
@@ -4083,6 +4087,11 @@ nvme_disk_create(struct spdk_bdev *disk, const char *base_name,
 	if (cdata->oncs.copy) {
 		/* For now bdev interface allows only single segment copy */
 		disk->max_copy = nsdata->mssrl;
+	}
+
+	nsdata_fdp = spdk_nvme_ns_get_fdp_data(ns);
+	if (nsdata_fdp.fdp_enable) {
+		disk->placement_type = SPDK_BDEV_PLACEMENT_FDP;
 	}
 
 	disk->ctxt = ctx;
@@ -7400,9 +7409,11 @@ bdev_nvme_readv(struct nvme_bdev_io *bio, struct iovec *iov, int iovcnt,
 static int
 bdev_nvme_writev(struct nvme_bdev_io *bio, struct iovec *iov, int iovcnt,
 		 void *md, uint64_t lba_count, uint64_t lba, uint32_t flags,
+		 enum spdk_bdev_placement_type placement_type, uint64_t placement_id,
 		 struct spdk_memory_domain *domain, void *domain_ctx,
 		 struct spdk_accel_sequence *seq)
 {
+	struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(bio);
 	struct spdk_nvme_ns *ns = bio->io_path->nvme_ns->ns;
 	struct spdk_nvme_qpair *qpair = bio->io_path->qpair->qpair;
 	int rc;
@@ -7415,13 +7426,25 @@ bdev_nvme_writev(struct nvme_bdev_io *bio, struct iovec *iov, int iovcnt,
 	bio->iovpos = 0;
 	bio->iov_offset = 0;
 
-	if (domain != NULL || seq != NULL) {
+	if (domain != NULL || seq != NULL || placement_type || placement_id) {
 		bio->ext_opts.size = SPDK_SIZEOF(&bio->ext_opts, accel_sequence);
 		bio->ext_opts.memory_domain = domain;
 		bio->ext_opts.memory_domain_ctx = domain_ctx;
 		bio->ext_opts.io_flags = flags;
 		bio->ext_opts.metadata = md;
 		bio->ext_opts.accel_sequence = seq;
+		if (placement_type != SPDK_BDEV_PLACEMENT_NONE) {
+			uint16_t fdp_placement_id = placement_id;
+
+			if (placement_type != bdev_io->bdev->placement_type) {
+				return -EINVAL;
+			}
+
+			if (placement_type == SPDK_BDEV_PLACEMENT_FDP) {
+				bio->ext_opts.io_flags = SPDK_NVME_IO_FLAGS_DATA_PLACEMENT_DIRECTIVE;
+				bio->ext_opts.cdw13 = (fdp_placement_id << 16);
+			}
+		}
 
 		rc = spdk_nvme_ns_cmd_writev_ext(ns, qpair, lba, lba_count,
 						 bdev_nvme_writev_done, bio,

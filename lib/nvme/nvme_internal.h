@@ -534,6 +534,8 @@ struct spdk_nvme_ns {
 	/* Identify Namespace data. */
 	struct spdk_nvme_ns_data	nsdata;
 
+	struct spdk_nvme_fdp_data	nsdata_fdp;
+
 	/* Zoned Namespace Command Set Specific Identify Namespace data. */
 	struct spdk_nvme_zns_ns_data	*nsdata_zns;
 
@@ -749,6 +751,8 @@ enum nvme_ctrlr_state {
 	 */
 	NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_IOCS_SPECIFIC,
 
+	NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT,
+	NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_FDP_SUPPORT,
 	/**
 	 * Waiting for the Identify Namespace Identification
 	 * Descriptors to be completed.
@@ -1125,6 +1129,8 @@ int	nvme_ctrlr_cmd_set_num_queues(struct spdk_nvme_ctrlr *ctrlr,
 				      uint32_t num_queues, spdk_nvme_cmd_cb cb_fn,
 				      void *cb_arg);
 int	nvme_ctrlr_cmd_get_num_queues(struct spdk_nvme_ctrlr *ctrlr,
+				      spdk_nvme_cmd_cb cb_fn, void *cb_arg);
+int	nvme_ctrlr_cmd_get_fdp_feature(struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid,
 				      spdk_nvme_cmd_cb cb_fn, void *cb_arg);
 int	nvme_ctrlr_cmd_set_async_event_config(struct spdk_nvme_ctrlr *ctrlr,
 		union spdk_nvme_feat_async_event_configuration config,

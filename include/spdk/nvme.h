@@ -579,6 +579,11 @@ struct spdk_nvme_poll_group_stat {
 	struct spdk_nvme_transport_poll_group_stat **transport_stat;
 };
 
+struct spdk_nvme_fdp_data {
+	bool fdp_enable;
+	uint8_t fdp_configuration_index;
+};
+
 /*
  * Controller support flags
  *
@@ -2914,6 +2919,18 @@ uint32_t spdk_nvme_ns_get_md_size(struct spdk_nvme_ns *ns);
  * \return the format index of the given namespace.
  */
 uint32_t spdk_nvme_ns_get_format_index(const struct spdk_nvme_ns_data *nsdata);
+
+/**
+ * Get the FDP data for the given namespace.
+ *
+ * This function is thread safe and can be called at any point while the controller
+ * is attached to the SPDK NVMe driver.
+ *
+ * \param ns Namespace to query.
+ *
+ * \return the FDP configuration data of the given namespace.
+ */
+struct spdk_nvme_fdp_data spdk_nvme_ns_get_fdp_data(struct spdk_nvme_ns *ns);
 
 /**
  * Check whether if the namespace can support extended LBA when end-to-end data

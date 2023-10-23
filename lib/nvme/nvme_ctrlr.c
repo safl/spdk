@@ -20,6 +20,7 @@ static int nvme_ctrlr_construct_and_submit_aer(struct spdk_nvme_ctrlr *ctrlr,
 static void nvme_ctrlr_identify_active_ns_async(struct nvme_active_ns_ctx *ctx);
 static int nvme_ctrlr_identify_ns_async(struct spdk_nvme_ns *ns);
 static int nvme_ctrlr_identify_ns_iocs_specific_async(struct spdk_nvme_ns *ns);
+static int nvme_ctrlr_identify_namespaces_fdp_support_next(struct spdk_nvme_ctrlr *ctrlr, uint32_t prev_nsid);
 static int nvme_ctrlr_identify_id_desc_async(struct spdk_nvme_ns *ns);
 static void nvme_ctrlr_init_cap(struct spdk_nvme_ctrlr *ctrlr);
 static void nvme_ctrlr_set_state(struct spdk_nvme_ctrlr *ctrlr, enum nvme_ctrlr_state state,
@@ -1402,6 +1403,10 @@ nvme_ctrlr_state_string(enum nvme_ctrlr_state state)
 		return "wait for identify namespace id descriptors";
 	case NVME_CTRLR_STATE_IDENTIFY_NS_IOCS_SPECIFIC:
 		return "identify ns iocs specific";
+	case NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT:
+		return "identify ns fdp support";
+	case NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_FDP_SUPPORT:
+		return "wait for identify ns fdp support";
 	case NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_IOCS_SPECIFIC:
 		return "wait for identify ns iocs specific";
 	case NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES:
@@ -2562,7 +2567,7 @@ nvme_ctrlr_identify_namespaces_iocs_specific_next(struct spdk_nvme_ctrlr *ctrlr,
 	ns = spdk_nvme_ctrlr_get_ns(ctrlr, nsid);
 	if (ns == NULL) {
 		/* No first/next active NS, move on to the next state */
-		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES,
+		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT,
 				     ctrlr->opts.admin_timeout_ms);
 		return 0;
 	}
@@ -2573,7 +2578,7 @@ nvme_ctrlr_identify_namespaces_iocs_specific_next(struct spdk_nvme_ctrlr *ctrlr,
 		ns = spdk_nvme_ctrlr_get_ns(ctrlr, nsid);
 		if (ns == NULL) {
 			/* no namespace with (supported) iocs specific data found */
-			nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES,
+			nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT,
 					     ctrlr->opts.admin_timeout_ms);
 			return 0;
 		}
@@ -2644,12 +2649,89 @@ nvme_ctrlr_identify_namespaces_iocs_specific(struct spdk_nvme_ctrlr *ctrlr)
 {
 	if (!nvme_ctrlr_multi_iocs_enabled(ctrlr)) {
 		/* Multi IOCS not supported/enabled, move on to the next state */
-		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES,
+		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT,
 				     ctrlr->opts.admin_timeout_ms);
 		return 0;
 	}
 
 	return nvme_ctrlr_identify_namespaces_iocs_specific_next(ctrlr, 0);
+}
+
+static void
+nvme_ctrlr_identify_ns_fdp_support_async_done(void *arg, const struct spdk_nvme_cpl *cpl)
+{
+	struct spdk_nvme_ns *ns = (struct spdk_nvme_ns *)arg;
+	struct spdk_nvme_ctrlr *ctrlr = ns->ctrlr;
+	union spdk_nvme_feat_fdp_cdw12 fdp_res;
+
+	if (spdk_nvme_cpl_is_error(cpl)) {
+		/* no need to print an error, the namespace simply does not support FDP */
+		nvme_ctrlr_identify_namespaces_fdp_support_next(ctrlr, ns->id);
+		return;
+	}
+
+	fdp_res.raw =  cpl->cdw0;
+	ns->nsdata_fdp.fdp_enable = fdp_res.bits.fdpe;
+	ns->nsdata_fdp.fdp_configuration_index = fdp_res.bits.fdpci;
+
+	nvme_ctrlr_identify_namespaces_fdp_support_next(ctrlr, ns->id);
+}
+
+static int
+nvme_ctrlr_identify_ns_fdp_support(struct spdk_nvme_ns *ns)
+{
+	struct spdk_nvme_ctrlr *ctrlr = ns->ctrlr;
+	int rc;
+
+	nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_FDP_SUPPORT,
+			     ctrlr->opts.admin_timeout_ms);
+
+	rc = nvme_ctrlr_cmd_get_fdp_feature(ctrlr, ns->id, nvme_ctrlr_identify_ns_fdp_support_async_done, ns);
+
+	return rc;
+}
+
+static int
+nvme_ctrlr_identify_namespaces_fdp_support_next(struct spdk_nvme_ctrlr *ctrlr, uint32_t prev_nsid)
+{
+	uint32_t nsid;
+	struct spdk_nvme_ns *ns;
+	int rc;
+
+	if (!prev_nsid) {
+		nsid = spdk_nvme_ctrlr_get_first_active_ns(ctrlr);
+	} else {
+		/* move on to the next active NS */
+		nsid = spdk_nvme_ctrlr_get_next_active_ns(ctrlr, prev_nsid);
+	}
+
+	ns = spdk_nvme_ctrlr_get_ns(ctrlr, nsid);
+	if (ns == NULL) {
+		/* No first/next active NS, move on to the next state */
+		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES,
+				     ctrlr->opts.admin_timeout_ms);
+		return 0;
+	}
+
+	rc = nvme_ctrlr_identify_ns_fdp_support(ns);
+	if (rc) {
+		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_ERROR, NVME_TIMEOUT_INFINITE);
+	}
+
+	return rc;
+}
+
+static int
+nvme_ctrlr_identify_namespaces_fdp_support(struct spdk_nvme_ctrlr *ctrlr)
+{
+	if(ctrlr->cdata.ctratt.fdps == 0) {
+		/* Controller does not support FDP */
+		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES,
+				     ctrlr->opts.admin_timeout_ms);
+		return 0;
+	}
+
+	return nvme_ctrlr_identify_namespaces_fdp_support_next(ctrlr, 0);
 }
 
 static void
@@ -3962,6 +4044,9 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 	case NVME_CTRLR_STATE_IDENTIFY_NS_IOCS_SPECIFIC:
 		rc = nvme_ctrlr_identify_namespaces_iocs_specific(ctrlr);
 		break;
+	case NVME_CTRLR_STATE_IDENTIFY_NS_FDP_SUPPORT:
+		rc = nvme_ctrlr_identify_namespaces_fdp_support(ctrlr);
+		break;
 
 	case NVME_CTRLR_STATE_SET_SUPPORTED_LOG_PAGES:
 		rc = nvme_ctrlr_set_supported_log_pages(ctrlr);
@@ -4021,6 +4106,7 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 	case NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS:
 	case NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_ID_DESCS:
 	case NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_IOCS_SPECIFIC:
+	case NVME_CTRLR_STATE_WAIT_FOR_IDENTIFY_NS_FDP_SUPPORT:
 	case NVME_CTRLR_STATE_WAIT_FOR_SUPPORTED_INTEL_LOG_PAGES:
 	case NVME_CTRLR_STATE_WAIT_FOR_DB_BUF_CFG:
 	case NVME_CTRLR_STATE_WAIT_FOR_HOST_ID:
