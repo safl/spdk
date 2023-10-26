@@ -150,7 +150,7 @@ class Server(ABC):
         self.configure_tuned()
         self.configure_cpu_governor()
         self.configure_irq_affinity(**self.irq_settings)
-        self.configure_pause_frames()
+        #self.configure_pause_frames()
 
     RDMA_PROTOCOL_IWARP = 0
     RDMA_PROTOCOL_ROCE = 1
