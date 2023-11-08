@@ -10971,6 +10971,8 @@ ublk_destroy_target in between. It will use current cpumask in SPDK when user do
 Name                    | Optional | Type        | Description
 ----------------------- | -------- | ----------- | -----------
 cpumask                 | Optional | string      | Cpumask for ublk target
+iowq_cpumask            | Optional | string      | Cpu affinity for io_uring io workers
+iowq_maxworker          | Optional | string      | max bounded and unbounded io worker for io_uring
 
 #### Response
 

@@ -2287,10 +2287,17 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     # ublk
     def ublk_create_target(args):
         rpc.ublk.ublk_create_target(args.client,
-                                    cpumask=args.cpumask)
+                                    cpumask=args.cpumask,
+                                    iowq_cpumask=args.iowq_cpumask,
+                                    iowq_maxworker=args.iowq_maxworker
+                                    )
     p = subparsers.add_parser('ublk_create_target',
                               help='Create spdk ublk target for ublk dev')
     p.add_argument('-m', '--cpumask', help='cpu mask for ublk dev')
+    p.add_argument('-c', '--iowq-cpumask', help='cpu affinity for io_uring workers. Example: 0x2')
+    p.add_argument('-n', '--iowq-maxworker', help='''max bounded worker and max unbounded worker for io_uring.
+    If 0 is set, use the default. Example: 3,4 means max bounded worker is 3 and max unbounded worker is 4;
+    If only one value is specified, then max bounded worker and unbound worker are the same''')
     p.set_defaults(func=ublk_create_target)
 
     def ublk_destroy_target(args):

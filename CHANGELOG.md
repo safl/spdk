@@ -6,6 +6,12 @@
 
 Added `caw_iov` field to struct `spdk_scsi_task` to support SBC-3 compare_and_write IO.
 
+### ublk
+
+Added `iowq_cpumask` to RPC ublk_create_target to set the cpu affinity of io_uring io workers. Added
+`iowq_maxworker` to RPC ublk_create_target to set the max number of bounded io worker and unbounded
+io worker.
+
 ## v23.09
 
 ### accel

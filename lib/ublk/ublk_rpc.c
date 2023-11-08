@@ -13,16 +13,22 @@
 
 struct rpc_ublk_create_target {
 	char		*cpumask;
+	char		*iowq_cpumask;
+	char		*iowq_maxworker;
 };
 
 static const struct spdk_json_object_decoder rpc_ublk_create_target_decoders[] = {
 	{"cpumask", offsetof(struct rpc_ublk_create_target, cpumask), spdk_json_decode_string, true},
+	{"iowq_cpumask", offsetof(struct rpc_ublk_create_target, iowq_cpumask), spdk_json_decode_string, true},
+	{"iowq_maxworker", offsetof(struct rpc_ublk_create_target, iowq_maxworker), spdk_json_decode_string, true},
 };
 
 static void
 free_rpc_ublk_create_target(struct rpc_ublk_create_target *req)
 {
 	free(req->cpumask);
+	free(req->iowq_cpumask);
+	free(req->iowq_maxworker);
 }
 
 static void
@@ -40,7 +46,7 @@ rpc_ublk_create_target(struct spdk_jsonrpc_request *request, const struct spdk_j
 			goto invalid;
 		}
 	}
-	rc = ublk_create_target(req.cpumask);
+	rc = ublk_create_target(req.cpumask, req.iowq_cpumask, req.iowq_maxworker);
 	if (rc != 0) {
 		goto invalid;
 	}

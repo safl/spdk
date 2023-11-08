@@ -17,6 +17,7 @@
 #include "spdk/json.h"
 #include "spdk/ublk.h"
 #include "spdk/thread.h"
+#include "spdk/cpuset.h"
 
 #include "ublk_internal.h"
 
@@ -158,6 +159,11 @@ struct ublk_tgt {
 	bool			ioctl_encode;
 	/* `ublk_drv` supports UBLK_F_USER_COPY */
 	bool			user_copy;
+
+	/* set the cpu affinity of io_uring workers */
+	struct spdk_cpuset	iowq_cpumask;
+	/* set max io_uring worker, if not set, the default is used */
+	uint32_t		iowq_maxworker[2];
 };
 
 static TAILQ_HEAD(, spdk_ublk_dev) g_ublk_devs = TAILQ_HEAD_INITIALIZER(g_ublk_devs);
@@ -267,6 +273,10 @@ spdk_ublk_init(void)
 
 	g_ublk_tgt.ctrl_fd = -1;
 	g_ublk_tgt.ctrl_ring.ring_fd = -1;
+
+	g_ublk_tgt.iowq_maxworker[0] = 0;
+	g_ublk_tgt.iowq_maxworker[1] = 0;
+	spdk_cpuset_zero(&g_ublk_tgt.iowq_cpumask);
 }
 
 static void
@@ -621,8 +631,54 @@ ublk_poller_register(void *args)
 	}
 }
 
+static int
+ublk_parse_maxworker(uint32_t *bounded_worker, uint32_t *unbounded_worker,
+		     const char *iowq_maxworker)
+{
+	char *end;
+	size_t len;
+
+	if (iowq_maxworker == NULL) {
+		return -1;
+	}
+
+	while (isblank(*iowq_maxworker)) {
+		iowq_maxworker++;
+	}
+
+	len = strlen(iowq_maxworker);
+
+	while (len > 0 && isblank(iowq_maxworker[len - 1])) {
+		len--;
+	}
+
+	if (len == 0) {
+		return -1;
+	}
+
+	errno = 0;
+	*bounded_worker = strtoul(iowq_maxworker, &end, 10);
+	if (errno) {
+		SPDK_ERRLOG("Conversion of cpu mask in '%s' failed\n", iowq_maxworker);
+		return -1;
+	}
+	if (*end == ',') {
+		end++;
+		*unbounded_worker = strtoul(end, &end, 10);
+		if (errno) {
+			SPDK_ERRLOG("Conversion of cpu mask in '%s' failed\n", end);
+			return -1;
+		}
+	} else {
+		*unbounded_worker = *bounded_worker;
+	}
+
+	return 0;
+}
+
 int
-ublk_create_target(const char *cpumask_str)
+ublk_create_target(const char *cpumask_str, const char *iowq_cpumask_str,
+		   const char *iowq_maxworker)
 {
 	int rc;
 	uint32_t i;
@@ -637,6 +693,23 @@ ublk_create_target(const char *cpumask_str)
 	rc = ublk_parse_core_mask(cpumask_str);
 	if (rc != 0) {
 		return rc;
+	}
+
+	if (iowq_cpumask_str) {
+		rc = spdk_cpuset_parse(&g_ublk_tgt.iowq_cpumask, iowq_cpumask_str);
+		if (rc < 0) {
+			SPDK_ERRLOG("invalid iowq_cpumask %s\n", iowq_cpumask_str);
+			return -EINVAL;
+		}
+	}
+
+	if (iowq_maxworker) {
+		rc = ublk_parse_maxworker(&g_ublk_tgt.iowq_maxworker[0], &g_ublk_tgt.iowq_maxworker[1],
+					  iowq_maxworker);
+		if (rc < 0) {
+			SPDK_ERRLOG("invalid iowq_maxworker %s\n", iowq_maxworker);
+			return -EINVAL;
+		}
 	}
 
 	assert(g_ublk_tgt.poll_groups == NULL);
@@ -1518,24 +1591,45 @@ ublk_dev_queue_init(struct ublk_queue *q)
 	rc = ublk_setup_ring(q->q_depth, &q->ring, IORING_SETUP_SQE128);
 	if (rc < 0) {
 		SPDK_ERRLOG("Failed at setup uring: %s\n", spdk_strerror(-rc));
-		munmap(q->io_cmd_buf, ublk_queue_cmd_buf_sz(q->q_depth));
-		q->io_cmd_buf = NULL;
-		return rc;
+		goto unmap_buf;
+	}
+
+	rc = io_uring_register_iowq_aff(&q->ring, sizeof(g_ublk_tgt.iowq_cpumask.cpus),
+					(cpu_set_t *)&g_ublk_tgt.iowq_cpumask.cpus);
+	if (rc < 0) {
+		SPDK_ERRLOG("Failed to set the cpu affinity of io_uring workers: %s\n", spdk_strerror(-rc));
+		goto queue_exit;
+	}
+
+	if (g_ublk_tgt.iowq_maxworker[0] == 0 && g_ublk_tgt.iowq_maxworker[1] == 0) {
+		SPDK_WARNLOG("The specified max bounded worker and max unbounded worker are both 0, use the default\n");
+	} else {
+		rc = io_uring_register_iowq_max_workers(&q->ring, g_ublk_tgt.iowq_maxworker);
+		if (rc < 0) {
+			SPDK_ERRLOG("Failed to set io_uring max worker: %s\n", spdk_strerror(-rc));
+			goto queue_exit;
+		}
 	}
 
 	rc = io_uring_register_files(&q->ring, &ublk->cdev_fd, 1);
 	if (rc != 0) {
 		SPDK_ERRLOG("Failed at uring register files: %s\n", spdk_strerror(-rc));
-		io_uring_queue_exit(&q->ring);
-		q->ring.ring_fd = -1;
-		munmap(q->io_cmd_buf, ublk_queue_cmd_buf_sz(q->q_depth));
-		q->io_cmd_buf = NULL;
-		return rc;
+		goto queue_exit;
 	}
 
 	ublk_dev_init_io_cmds(&q->ring, q->q_depth);
 
 	return 0;
+
+queue_exit:
+	io_uring_queue_exit(&q->ring);
+	q->ring.ring_fd = -1;
+
+unmap_buf:
+	munmap(q->io_cmd_buf, ublk_queue_cmd_buf_sz(q->q_depth));
+	q->io_cmd_buf = NULL;
+
+	return rc;
 }
 
 static void

@@ -3,10 +3,14 @@
 #  All rights reserved.
 
 
-def ublk_create_target(client, cpumask=None):
+def ublk_create_target(client, cpumask=None, iowq_cpumask=None, iowq_maxworker=None):
     params = {}
     if cpumask:
         params['cpumask'] = cpumask
+    if iowq_cpumask:
+        params['iowq_cpumask'] = iowq_cpumask
+    if iowq_maxworker:
+        params['iowq_maxworker'] = iowq_maxworker
     return client.call('ublk_create_target', params)
 
 
