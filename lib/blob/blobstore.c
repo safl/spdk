@@ -2237,6 +2237,14 @@ blob_persist_generate_new_md(struct spdk_blob_persist_ctx *ctx)
 	/* Generate the new metadata */
 	rc = blob_serialize(blob, &ctx->pages, &blob->active.num_pages);
 	if (rc < 0) {
+		/* Since we use active.num_pages to judge whether a blob is a deleted blob,
+		 * if spdk_malloc in blob_serialize_add_page fail, this blob will become a
+		 * deleted blob, even we close this blob, it still remain in open_blobs tree,
+		 * and unload bs will fail too. let's fix this by set active.num_pages 1 when
+		 * serialize failed.
+		 */
+
+		blob->active.num_pages = 1;
 		blob_persist_complete(seq, ctx, rc);
 		return;
 	}
