@@ -1720,6 +1720,7 @@ struct spdk_blob_persist_ctx {
 	spdk_bs_sequence_cpl		cb_fn;
 	void				*cb_arg;
 	TAILQ_ENTRY(spdk_blob_persist_ctx) link;
+	int				rc;
 };
 
 static void
@@ -1749,7 +1750,7 @@ blob_persist_complete_cb(void *arg)
 	struct spdk_blob_persist_ctx *ctx = arg;
 
 	/* Call user callback */
-	ctx->cb_fn(ctx->seq, ctx->cb_arg, 0);
+	ctx->cb_fn(ctx->seq, ctx->cb_arg, ctx->rc);
 
 	/* Free the memory */
 	spdk_free(ctx->pages);
@@ -1768,6 +1769,7 @@ blob_persist_complete(spdk_bs_sequence_t *seq, struct spdk_blob_persist_ctx *ctx
 		blob_mark_clean(blob);
 	}
 
+	ctx->rc = bserrno;
 	assert(ctx == TAILQ_FIRST(&blob->persists_to_complete));
 
 	/* Complete all persists that were pending when the current persist started */
