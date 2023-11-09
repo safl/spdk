@@ -525,6 +525,12 @@ bdev_uring_check_zoned_support(struct bdev_uring *uring, const char *name, const
 
 	uring->bdev.zoned = false;
 
+	/* Perform check on block devices only */
+	struct stat sb;
+	if (stat(filename, &sb) == 0 && (sb.st_mode & S_IFMT) != S_IFBLK) {
+		return 0;
+	}
+
 	/* Check if this is a zoned block device */
 	if (bdev_uring_read_sysfs_attr(filename, "queue/zoned", str, sizeof(str))) {
 		SPDK_ERRLOG("Unable to open file %s/queue/zoned. errno: %d\n", filename, errno);
