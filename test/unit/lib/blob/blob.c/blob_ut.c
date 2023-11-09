@@ -4082,6 +4082,49 @@ blob_insert_cluster_msg_test(void)
 
 	CU_ASSERT(blob->active.clusters[cluster_num] != 0);
 
+	if (blob->use_extent_table) {
+		CU_ASSERT(*((uint32_t *)bs_cluster_to_extent_page(blob, cluster_num)) != 0);
+	}
+	spdk_blob_close(blob, blob_op_complete, NULL);
+	poll_threads();
+	CU_ASSERT(g_bserrno == 0);
+
+	/* add a spdk_malloc fail test case */
+	ut_spdk_blob_opts_init(&opts);
+	opts.thin_provision = true;
+	opts.num_clusters = 8;
+
+	blob = ut_blob_create_and_open(bs, &opts);
+	cluster_num = 5;
+	spdk_spin_lock(&bs->used_lock);
+	bs_allocate_cluster(blob, cluster_num, &new_cluster, &extent_page, false);
+	CU_ASSERT(blob->active.clusters[cluster_num] == 0);
+	if (blob->use_extent_table) {
+		CU_ASSERT(*((uint32_t *)bs_cluster_to_extent_page(blob, cluster_num)) == 0);
+	}
+	spdk_spin_unlock(&bs->used_lock);
+	CU_ASSERT(blob->active.num_pages > 0);
+	ut_spdk_malloc_mocked = true;
+	ut_spdk_malloc = NULL;
+	blob_insert_cluster_on_md_thread(blob, cluster_num, new_cluster, extent_page, &page,
+					 blob_op_complete, NULL);
+	poll_threads();
+	CU_ASSERT(g_bserrno == -ENOMEM);
+	CU_ASSERT(blob->active.num_pages > 0);
+	ut_spdk_malloc_mocked = false;
+	/* even spdk malloc will fail, the extent page should release too. */
+	if (blob->use_extent_table) {
+		CU_ASSERT(*((uint32_t *)bs_cluster_to_extent_page(blob, cluster_num)) == 0);
+		cluster_num = 8;
+		spdk_spin_lock(&bs->used_lock);
+		bs_allocate_cluster(blob, cluster_num, &new_cluster, &extent_page, false);
+		CU_ASSERT(blob->active.clusters[cluster_num] == 0);
+		spdk_spin_unlock(&bs->used_lock);
+		blob_insert_cluster_on_md_thread(blob, cluster_num, new_cluster, extent_page, &page,
+						 blob_op_complete, NULL);
+		poll_threads();
+	}
+
 	spdk_blob_close(blob, blob_op_complete, NULL);
 	poll_threads();
 	CU_ASSERT(g_bserrno == 0);

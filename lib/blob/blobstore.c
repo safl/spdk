@@ -7838,6 +7838,11 @@ blob_insert_cluster_msg_cb(void *arg, int bserrno)
 {
 	struct spdk_blob_insert_cluster_ctx *ctx = arg;
 
+	if (bserrno && ctx->extent_page) {
+		uint32_t *extent_page = bs_cluster_to_extent_page(ctx->blob, ctx->cluster_num);
+		*extent_page = 0;
+	}
+
 	ctx->rc = bserrno;
 	spdk_thread_send_msg(ctx->thread, blob_insert_cluster_msg_cpl, ctx);
 }
