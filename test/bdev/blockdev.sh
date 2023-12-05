@@ -284,7 +284,7 @@ function setup_raid5f_conf() {
 }
 
 function bdev_bounds() {
-	$testdir/bdevio/bdevio -w -s $PRE_RESERVED_MEM --json "$conf_file" "$env_ctx" &
+	$testdir/bdevio/bdevio -L all -w -s $PRE_RESERVED_MEM --json "$conf_file" "$env_ctx" &
 	bdevio_pid=$!
 	trap 'cleanup; killprocess $bdevio_pid; exit 1' SIGINT SIGTERM EXIT
 	echo "Process bdevio pid: $bdevio_pid"
