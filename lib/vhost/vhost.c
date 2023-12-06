@@ -51,6 +51,13 @@ spdk_vhost_dev_find(const char *ctrlr_name)
 	return NULL;
 }
 
+static void
+vhost_module_fini_cb(void)
+{
+	g_fini_cb();
+	g_fini_cb = NULL;
+}
+
 static int
 vhost_parse_core_mask(const char *mask, struct spdk_cpuset *cpumask)
 {
@@ -188,7 +195,7 @@ vhost_dev_unregister(struct spdk_vhost_dev *vdev)
 
 	TAILQ_REMOVE(&g_vhost_devices, vdev, tailq);
 	if (TAILQ_EMPTY(&g_vhost_devices) && g_fini_cb != NULL) {
-		g_fini_cb();
+		vhost_module_fini_cb();
 	}
 	spdk_vhost_unlock();
 
@@ -281,7 +288,7 @@ vhost_fini(void)
 	struct spdk_vhost_dev *vdev, *tmp;
 
 	if (spdk_vhost_dev_next(NULL) == NULL) {
-		g_fini_cb();
+		vhost_module_fini_cb();
 		return;
 	}
 
@@ -329,7 +336,7 @@ virtio_blk_transports_destroy(void)
 	struct spdk_virtio_blk_transport *transport = TAILQ_FIRST(&g_virtio_blk_transports);
 
 	if (transport == NULL) {
-		g_fini_cb();
+		vhost_module_fini_cb();
 		return;
 	}
 	TAILQ_REMOVE(&g_virtio_blk_transports, transport, tailq);
