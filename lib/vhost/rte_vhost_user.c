@@ -201,7 +201,7 @@ vhost_vq_avail_ring_get(struct spdk_vhost_virtqueue *virtqueue, uint16_t *reqs,
 
 	virtqueue->last_avail_idx += count;
 	/* Check whether there are unprocessed reqs in vq, then kick vq manually */
-	if (virtqueue->vsession && spdk_unlikely(virtqueue->vsession->interrupt_mode)) {
+	if (virtqueue->vsession) {
 		/* If avail_idx is larger than virtqueue's last_avail_idx, then there is unprocessed reqs.
 		 * avail_idx should get updated here from memory, in case of race condition with guest.
 		 */
