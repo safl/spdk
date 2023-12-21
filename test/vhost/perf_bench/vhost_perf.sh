@@ -8,6 +8,8 @@ rootdir=$(readlink -f $testdir/../../..)
 source $rootdir/test/common/autotest_common.sh
 source $rootdir/test/vhost/common.sh
 
+verbose=0
+
 vhost_num="0"
 vm_memory=2048
 vm_sar_enable=false
@@ -211,7 +213,7 @@ while getopts 'xhip-:' optchar; do
 		h) usage $0 ;;
 		x)
 			set -x
-			x="-x"
+			verbose=1
 			;;
 		i) enable_irq=1 ;;
 		p) enable_perf=1 ;;
@@ -405,9 +407,14 @@ else
 			done
 			echo " "
 		done
-		$rpc_py bdev_lvol_get_lvstores
+		if ((verbose > 0)); then
+			$rpc_py bdev_lvol_get_lvstores
+		fi
 	fi
-	$rpc_py bdev_get_bdevs
+	if ((verbose > 0)); then
+		$rpc_py bdev_get_bdevs
+	fi
+
 	if [[ "$ctrl_type" =~ "vhost" ]]; then
 		$rpc_py vhost_get_controllers
 	elif [[ "$ctrl_type" =~ "vfio" ]]; then
