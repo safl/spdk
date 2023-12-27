@@ -133,13 +133,11 @@ if ! echo "$response" | grep -q "$message"; then
 fi
 
 # send message using hello_sock client with KTLS enabled
-
-# CI so far doesn't support new openssl-3 with this option.
-# This section is commented out and will be changed back after the CI has systems that run with openssl-3
-# See GH issue #2687
-
-# message="**MESSAGE:This is a test message from the hello_sock client with KTLS enabled**"
-# echo "$message" | $HELLO_SOCK_APP -H $TARGET_IP -P $ISCSI_PORT $PSK -K
+message="**MESSAGE:This is a test message from the hello_sock client with KTLS enabled**"
+response=$(echo "$message" |  $HELLO_SOCK_APP -H $TARGET_IP -P $ISCSI_PORT $PSK -K -m 0x2)
+if ! echo "$response" | grep -q "$message"; then
+	exit 1
+fi
 
 # send message using openssl client using TLS 1.3
 message="**MESSAGE:This is a test message from the openssl client using TLS 1.3**"
