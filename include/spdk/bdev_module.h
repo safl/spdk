@@ -543,6 +543,13 @@ struct spdk_bdev {
 	 */
 	enum spdk_dif_type dif_type;
 
+	/**
+	 * DIF Protection Information format (CRC-16, CRC-32, CRC-64).
+	 *
+	 * Note that this field is valid only if DIF is enabled.
+	 */
+	enum spdk_dif_pi_format dif_pi_format;
+
 	/*
 	 * DIF location.
 	 *

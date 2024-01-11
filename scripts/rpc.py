@@ -1181,6 +1181,45 @@ if __name__ == "__main__":
     p.add_argument('name', help='pass through bdev name')
     p.set_defaults(func=bdev_passthru_delete)
 
+    def bdev_dif_create(args):
+        print_json(rpc.bdev.bdev_dif_create(args.client,
+                                            base_bdev_name=args.base_bdev_name,
+                                            name=args.name,
+                                            uuid=args.uuid,
+                                            dif_type=args.dif_type,
+                                            dif_pi_format=args.dif_pi_format,
+                                            dif_is_head_of_md=args.dif_is_head_of_md,
+                                            check_reftag=args.check_reftag,
+                                            check_guard=args.check_guard))
+
+    p = subparsers.add_parser('bdev_dif_create', help='Add a DIF bdev on existing bdev')
+    p.add_argument('-b', '--base-bdev-name', help="Name of the existing bdev", required=True)
+    p.add_argument('-p', '--name', help="Name of the DIF bdev", required=True)
+    p.add_argument('-u', '--uuid', help="UUID of the bdev")
+    p.add_argument('-t', '--dif-type', type=int, choices=[0, 1, 2, 3], default=1,
+                   help='Protection information type. Default=1.')
+    p.add_argument('-f', '--dif-pi-format', type=int, choices=[1, 2, 3], default=1,
+                   help='Protection information format (1 - CRC-16, 2 - CRC-32, 3 - CRC-64). Default=1.')
+    p.add_argument('-d', '--dif-is-head-of-md',  default=False, action='store_true',
+                   help='Protection information is in the first 8/16 bytes of metadata. Default=false.')
+    p.add_argument('-r', '--enable-check-reftag', default=True, dest='check_reftag', action='store_true',
+                   help='Enable checking and generating of PI reference tag for I/O processing. Default=true.')
+    p.add_argument('--disable-check-reftag', dest='check_reftag', action='store_false',
+                   help='Disable checking and generating of PI reference tag for I/O processing.')
+    p.add_argument('-g', '--enable-check-guard', default=True, dest='check_guard', action='store_true',
+                   help='Enable checking and generating of PI guard for I/O processing. Default=true.')
+    p.add_argument('--disable-check-guard', dest='check_guard', action='store_false',
+                   help='Disable checking and generating of PI guard for I/O processing.')
+    p.set_defaults(func=bdev_dif_create)
+
+    def bdev_dif_delete(args):
+        rpc.bdev.bdev_dif_delete(args.client,
+                                 name=args.name)
+
+    p = subparsers.add_parser('bdev_dif_delete', help='Delete a DIF bdev')
+    p.add_argument('name', help='DIF bdev name')
+    p.set_defaults(func=bdev_dif_delete)
+
     def bdev_get_bdevs(args):
         print_dict(rpc.bdev.bdev_get_bdevs(args.client,
                                            name=args.name, timeout=args.timeout_ms))

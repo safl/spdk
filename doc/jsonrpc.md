@@ -6292,6 +6292,94 @@ Example response:
 }
 ~~~
 
+### bdev_dif_create {#rpc_bdev_dif_create}
+
+Construct @ref bdev_config_dif
+
+Create DIF Virtual bdev. This bdev generates (in-place) the DIF protection information
+on writes and verifies it on reads.
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Bdev name
+base_bdev_name          | Required | string      | Base bdev name
+uuid                    | Optional | string      | UUID of new bdev
+dif_type                | Optional | number      | Protection information type. Default=1.
+dif_pi_format           | Optional | number      | Protection information format (1 - CRC-16, 2 - CRC-32, 3 - CRC-64). Default=1.
+dif_is_head_of_md       | Optional | string      | Protection information is in the first 8/16 bytes of metadata. Default=false.
+enable_check_reftag     | Optional | string      | Enable checking and generating of PI reference tag for I/O processing. Default=true.
+disable_check_reftag    | Optional | string      | Disable checking and generating of PI reference tag for I/O processing.
+enable_check_guard      | Optional | string      | Enable checking and generating of PI guard for I/O processing. Default=true.
+disable_check_guard     | Optional | string      | Disable checking and generating of PI guard for I/O processing.
+
+#### Result
+
+Name of newly created bdev.
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "params": {
+    "base_bdev_name": "Malloc0",
+    "name": "Dif0"
+  },
+  "jsonrpc": "2.0",
+  "method": "bdev_dif_create",
+  "id": 1
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": "Dif0"
+}
+~~~
+
+### bdev_dif_delete {#rpc_bdev_dif_delete}
+
+Delete @ref bdev_config_dif
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Bdev name
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "params": {
+    "name": "Dif0"
+  },
+  "jsonrpc": "2.0",
+  "method": "bdev_dif_delete",
+  "id": 1
+}
+
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
 ### bdev_xnvme_create {#rpc_bdev_xnvme_create}
 
 Create xnvme bdev. This bdev type redirects all IO to its underlying backend.

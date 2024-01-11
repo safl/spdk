@@ -398,6 +398,24 @@ Example command for removing malloc bdev:
 
 `rpc.py bdev_malloc_delete Malloc0`
 
+## DIF Virtual bdev {#bdev_config_dif}
+
+DIF Virtual bdev allows for generating (in-place) and verifying of DIF (Data Integrity Field)
+protection information. The underlying bdev needs to be configured with the extended sector size
+(e.g., 520B). An SPDK application needs to allocate buffers of extended size, which include
+the space for metadata. The DIF Virtual bdev will fill that metadata with the DIF protection
+information on write, and verify the DIF on read.
+
+Example command for creating the malloc bdev and DIF Virtual bdev:
+
+`rpc.py bdev_malloc_create -b Malloc0 512 512 -m 8 -i -t 0`
+`rpc.py bdev_dif_create -b Malloc0 -p Dif0 -t 1`
+
+The first command creates a malloc bdev with the block size of 520B (512B + 8B),
+with DIF generate and verify disabled (DIF Type = 0). The second command creates
+a DIF Virtual bdev sitting on top of the malloc bdev, with DIF generate and verify
+enabled (DIF Type = 1).
+
 ## Null {#bdev_config_null}
 
 The SPDK null bdev driver is a dummy block I/O target that discards all writes and returns undefined
