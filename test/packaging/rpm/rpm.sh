@@ -89,23 +89,23 @@ build_dpdk_rpm() (
 	sudo rpm -i "$rpmdir/$arch/dpdk-devel-$version-$release.$arch.rpm"
 
 	# Run actual test
-	MV_RUNPATH=$dpdkdir build_rpm --with-shared --with-dpdk="$dpdkdir"
+	build_rpm --with-shared --with-dpdk="$dpdkdir"
 
 	sudo rpm -e dpdk-devel
 )
 
 install_uninstall_rpms() {
-	local rpms
+	local rpms app=spdk_tgt
 
 	rpms=("${1:-$builddir/rpm/}/$arch/"*.rpm)
 
-	# Clean repo first to make sure linker won't follow $SPDK_APP's RUNPATH
-	make -C "$rootdir" clean $MAKEFLAGS
-
 	sudo rpm -i "${rpms[@]}"
 	# Check if we can find one of the apps in the PATH now and verify if it doesn't miss
-	# any libs.
-	LIST_LIBS=yes "$rootdir/rpmbuild/rpm-deps.sh" "${SPDK_APP[@]##*/}"
+	# any libs. But first, make sure RPATH is stripped from the binary.
+	if "$rootdir/test/packaging/rpathrm.py" -o "$builddir/$app" "$app"; then
+		app=$builddir/$app
+	fi
+	LIST_LIBS=yes "$rootdir/rpmbuild/rpm-deps.sh" "$app"
 	rm "${rpms[@]}"
 	rpms=("${rpms[@]##*/}") rpms=("${rpms[@]%.rpm}")
 	sudo rpm -e "${rpms[@]}"
@@ -116,14 +116,7 @@ build_rpm() {
 	GEN_SPEC=yes "$rootdir/rpmbuild/rpm.sh" "$@"
 	# Actual build
 	"$rootdir/rpmbuild/rpm.sh" "$@" || return $?
-	# FIXME: Remove the MV_RUNPATH HACK when the patchelf is available. See: 9cb9f24152f
-	if [[ -n $MV_RUNPATH ]]; then
-		mv "$MV_RUNPATH"{,.hidden}
-	fi
 	install_uninstall_rpms
-	if [[ -n $MV_RUNPATH ]]; then
-		mv "$MV_RUNPATH"{.hidden,}
-	fi
 }
 
 build_shared_rpm() {
@@ -176,14 +169,13 @@ build_rpm_from_gen_spec() {
 	# See rpm.sh for details on the PYTHONPATH HACK
 	PYTHONPATH="$(python3 -c "import sys; print('%s' % ':'.join(sys.path)[1:])")" \
 		rpmbuild -ba "$builddir/gen-spdk.spec"
-	# Clean builddir to make sure linker won't follow $SPDK_APP's RUNPATH
-	rm -rf "$rpmbuilddir"
 	install_uninstall_rpms "$rpmdir"
 }
 
 build_shared_native_dpdk_rpm() {
 	[[ -e /tmp/spdk-ld-path ]] # autobuild dependency
-	source /tmp/spdk-ld-path
+	# We definitely don't want to slurp LD_LIBRARY_PATH back in
+	source <(grep -v LD_LIBRARY_PATH /tmp/spdk-ld-path)
 
 	build_dpdk_rpm \
 		"$SPDK_RUN_EXTERNAL_DPDK" \
