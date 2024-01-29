@@ -41,11 +41,10 @@ def is_exec_lsb_elf(data):
 
 
 def is_exec_elf(data):
-    # ET_EXEC. SPDK doesn't use -pie for instance so this should
-    # narrow down stuff nicely for us.
+    # ET_EXEC, ET_DYN
     exe = rb("I", data[16:20]) & 0xFFFF
 
-    return exe == 0x2
+    return exe in (0x2, 0x3)
 
 
 def is_valid_bin(data):
@@ -148,21 +147,16 @@ def mask_rpath(path, out, data):
         print("rpath not found", file=sys.stderr)
         return 1
 
-    # HACK: Overwrite first d_tag byte to change the type of the struct.
-    # We could go with any of the "unspecified" ranges but spec says they
-    # are "reserved for processor-specific semantics." So instead, since we
-    # know we work with executable and not a shared object, change it to
-    # DT_SYMBOLIC - according to spec such object should be ignored within
-    # executable as its d_un value. This is cheap and should not break
-    # anything. Also, if we were about to, for instance, remove entire rpath
-    # struct from the array, actual in-file offsets could change and this
-    # would require some more work to adjust data across a bigger portion of
-    # the file.
-    data[offset] = 0x10
-
     # Get actual rpath string for verbosity
     dynstr_table = data[dynstr_offset:dynstr_offset + dynstr_size]
     dynstr = rstring(dynstr_table[val:])
+    # Prepare \0 array to null the rpath string
+    null = bytearray([0x0] * len(dynstr))
+
+    count = 0
+    for byte in null:
+        data[dynstr_offset + val + count] = byte
+        count += 1
 
     print(f"Offset: {offset}\nPath: {path}\nrpath: {dynstr}")
 
