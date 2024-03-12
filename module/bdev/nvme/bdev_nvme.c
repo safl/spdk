@@ -388,6 +388,7 @@ nvme_bdev_dump_trid_json(const struct spdk_nvme_transport_id *trid, struct spdk_
 {
 	const char *trtype_str;
 	const char *adrfam_str;
+	char priority[16];
 
 	trtype_str = spdk_nvme_transport_id_trtype_str(trid->trtype);
 	if (trtype_str) {
@@ -410,6 +411,9 @@ nvme_bdev_dump_trid_json(const struct spdk_nvme_transport_id *trid, struct spdk_
 	if (trid->subnqn[0] != '\0') {
 		spdk_json_write_named_string(w, "subnqn", trid->subnqn);
 	}
+
+	snprintf(priority, sizeof(priority), "%d", trid->priority);
+	spdk_json_write_named_string(w, "priority", priority);
 }
 
 static void
@@ -8256,6 +8260,9 @@ nvme_ctrlr_config_json(struct spdk_json_write_ctx *w,
 	if (opts->src_svcid[0] != '\0') {
 		spdk_json_write_named_string(w, "hostsvcid", opts->src_svcid);
 	}
+
+	spdk_json_write_named_uint32(w, "num_io_queues", opts->num_io_queues);
+	spdk_json_write_named_uint32(w, "fabrics_connect_timeout_us", opts->fabrics_connect_timeout_us);
 
 	spdk_json_write_object_end(w);
 
