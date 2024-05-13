@@ -36,14 +36,9 @@ install_uadk() {
 }
 
 _install_shfmt() {
-	local version=$1 arch=$2 type=$3
+	local version=$1
 
 	local shfmt_dir=/usr/local/src/shfmt shfmt_repo=https://github.com/mvdan/sh
-
-	if [[ $type != build ]]; then
-		echo "$shfmt_repo/releases/download/$version/shfmt_${version}_linux_${arch}"
-		return 0
-	fi
 
 	if [[ ! -e /etc/opt/spdk-pkgdep/paths/go.path ]]; then
 		install_golang
@@ -70,32 +65,13 @@ install_shfmt() {
 	local shfmt_dir=${SHFMT_DIR:-/opt/shfmt}
 	local shfmt_dir_out=${SHFMT_DIR_OUT:-/usr/bin}
 	local shfmt_url
-	local os
-	local arch
-	local cmdline
 
 	if hash "$shfmt" && [[ $("$shfmt" --version) == "$shfmt_version" ]]; then
 		echo "$shfmt already installed"
 		return 0
 	fi 2> /dev/null
 
-	arch=$(uname -m)
-	os=$(uname -s)
-
-	case "$arch" in
-		x86_64) arch="amd64" ;;
-		aarch64) arch="arm" ;;
-		amd64) ;; # FreeBSD
-		*)
-			echo "Not supported arch (${arch:-Unknown}), skipping"
-			return 0
-			;;
-	esac
-
-	cmdline=("$shfmt_version" "$arch")
-	[[ $os == FreeBSD || -n $BUILD_SHFMT ]] && cmdline+=(build)
-
-	shfmt_url=$(_install_shfmt "${cmdline[@]}")
+	shfmt_url=$(_install_shfmt "$shfmt_version")
 
 	mkdir -p "$shfmt_dir"
 	mkdir -p "$shfmt_dir_out"
