@@ -98,10 +98,14 @@ bdev_xnvme_get_io_channel(void *ctx)
 static bool
 bdev_xnvme_io_type_supported(void *ctx, enum spdk_bdev_io_type io_type)
 {
+	struct bdev_xnvme *xnvme = ctx;
 	switch (io_type) {
 	case SPDK_BDEV_IO_TYPE_READ:
 	case SPDK_BDEV_IO_TYPE_WRITE:
 		return true;
+	case SPDK_BDEV_IO_TYPE_WRITE_ZEROES:
+	case SPDK_BDEV_IO_TYPE_UNMAP:
+		return !strcmp(xnvme->io_mechanism, "io_uring_cmd");
 	default:
 		return false;
 	}
@@ -122,6 +126,57 @@ bdev_xnvme_destruct(void *ctx)
 	struct bdev_xnvme *xnvme = ctx;
 
 	spdk_io_device_unregister(xnvme, bdev_xnvme_destruct_cb);
+
+	return 0;
+}
+
+static int
+bdev_xnvme_unmap(struct spdk_bdev_io *bdev_io, struct xnvme_cmd_ctx *ctx, struct bdev_xnvme *xnvme)
+{
+	struct spdk_nvme_dsm_range *range;
+	uint64_t offset, remaining;
+	uint64_t num_ranges_u64, num_blocks, offset_blocks;
+	uint16_t num_ranges;
+
+	num_blocks = bdev_io->u.bdev.num_blocks;
+	offset_blocks = bdev_io->u.bdev.offset_blocks;
+
+	num_ranges_u64 = (num_blocks + SPDK_NVME_DATASET_MANAGEMENT_RANGE_MAX_BLOCKS - 1) /
+			 SPDK_NVME_DATASET_MANAGEMENT_RANGE_MAX_BLOCKS;
+	if (num_ranges_u64 > SPDK_NVME_DATASET_MANAGEMENT_MAX_RANGES) {
+		SPDK_ERRLOG("Unmap request for %" PRIu64 " blocks is too large\n", num_blocks);
+		return -EINVAL;
+	}
+	num_ranges = (uint16_t)num_ranges_u64;
+
+	offset = offset_blocks;
+	remaining = num_blocks;
+
+	assert(bdev_io->u.bdev.iovcnt == 1);
+	range = (struct spdk_nvme_dsm_range *) bdev_io->u.bdev.iovs->iov_base;
+
+	/* Fill max-size ranges until the remaining blocks fit into one range */
+	while (remaining > SPDK_NVME_DATASET_MANAGEMENT_RANGE_MAX_BLOCKS) {
+		range->attributes.raw = 0;
+		range->length = SPDK_NVME_DATASET_MANAGEMENT_RANGE_MAX_BLOCKS;
+		range->starting_lba = offset;
+
+		offset += SPDK_NVME_DATASET_MANAGEMENT_RANGE_MAX_BLOCKS;
+		remaining -= SPDK_NVME_DATASET_MANAGEMENT_RANGE_MAX_BLOCKS;
+		range++;
+	}
+
+	/* Final range describes the remaining blocks */
+	range->attributes.raw = 0;
+	range->length = remaining;
+	range->starting_lba = offset;
+
+	ctx->cmd.common.opcode = XNVME_SPEC_NVM_OPC_DATASET_MANAGEMENT;
+	ctx->cmd.common.nsid = xnvme->nsid;
+	ctx->cmd.nvm.nlb = num_blocks - 1;
+	ctx->cmd.nvm.slba = offset_blocks;
+	ctx->cmd.dsm.nr = num_ranges - 1;
+	ctx->cmd.dsm.ad = true;
 
 	return 0;
 }
@@ -156,6 +211,13 @@ _xnvme_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 		ctx->cmd.common.nsid = xnvme->nsid;
 		ctx->cmd.nvm.nlb = bdev_io->u.bdev.num_blocks - 1;
 		ctx->cmd.nvm.slba = bdev_io->u.bdev.offset_blocks;
+		break;
+	case SPDK_BDEV_IO_TYPE_UNMAP:
+		if (bdev_xnvme_unmap(bdev_io, ctx, xnvme)) {
+			xnvme_queue_put_cmd_ctx(xnvme_ch->queue, ctx);
+			spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
+			return;
+		}
 		break;
 	default:
 		SPDK_ERRLOG("Wrong io type\n");
@@ -222,6 +284,7 @@ bdev_xnvme_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_
 	 * get the aligned buffer from the pool by calling spdk_bdev_io_get_buf. */
 	case SPDK_BDEV_IO_TYPE_READ:
 	case SPDK_BDEV_IO_TYPE_WRITE:
+	case SPDK_BDEV_IO_TYPE_UNMAP:
 		spdk_bdev_io_get_buf(bdev_io, bdev_xnvme_get_buf_cb,
 				     bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen);
 		break;
