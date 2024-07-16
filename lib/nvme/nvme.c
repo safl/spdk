@@ -1610,10 +1610,12 @@ nvme_parse_addr(struct sockaddr_storage *sa, int family, const char *addr, const
 		return -EINVAL;
 	}
 
-	*port = spdk_strtol(service, 10);
-	if (*port <= 0 || *port >= 65536) {
-		SPDK_ERRLOG("Invalid port: %s\n", service);
-		return -EINVAL;
+	if (*service) {
+		*port = spdk_strtol(service, 10);
+		if (*port <= 0 || *port >= 65536) {
+			SPDK_ERRLOG("Invalid port: %s\n", service);
+			return -EINVAL;
+		}
 	}
 
 	ret = getaddrinfo(addr, service, &hints, &res);
