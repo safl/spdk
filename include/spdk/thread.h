@@ -1072,7 +1072,7 @@ struct spdk_iobuf_buffer {
 typedef STAILQ_HEAD(, spdk_iobuf_entry) spdk_iobuf_entry_stailq_t;
 typedef STAILQ_HEAD(, spdk_iobuf_buffer) spdk_iobuf_buffer_stailq_t;
 
-struct spdk_iobuf_pool {
+struct spdk_iobuf_pool_cache {
 	/** Buffer pool */
 	struct spdk_ring		*pool;
 	/** Buffer cache */
@@ -1089,12 +1089,17 @@ struct spdk_iobuf_pool {
 	struct spdk_iobuf_pool_stats	stats;
 };
 
+struct spdk_iobuf_node_cache {
+	/** Small buffer memory pool cache */
+	struct spdk_iobuf_pool_cache	small;
+	/** Large buffer memory pool cache */
+	struct spdk_iobuf_pool_cache	large;
+};
+
 /** iobuf channel */
 struct spdk_iobuf_channel {
-	/** Small buffer memory pool */
-	struct spdk_iobuf_pool		small;
-	/** Large buffer memory pool */
-	struct spdk_iobuf_pool		large;
+	/* Buffer cache */
+	struct spdk_iobuf_node_cache	cache;
 	/** Module pointer */
 	const void			*module;
 	/** Parent IO channel */
