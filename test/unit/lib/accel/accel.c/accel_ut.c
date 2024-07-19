@@ -2311,7 +2311,7 @@ test_sequence_accel_buffers(void)
 	 * available
 	 */
 	accel_ch = spdk_io_channel_get_ctx(ioch);
-	small = &accel_ch->iobuf.cache.small;
+	small = &accel_ch->iobuf.cache[0].small;
 	small_cache_count = small->cache_count;
 	STAILQ_INIT(&small_cache);
 	STAILQ_SWAP(&small->cache, &small_cache, spdk_iobuf_buffer);
@@ -2660,7 +2660,7 @@ test_sequence_memory_domain(void)
 	seq = NULL;
 	/* Make sure the buffer pool is empty */
 	accel_ch = spdk_io_channel_get_ctx(ioch);
-	small = &accel_ch->iobuf.cache.small;
+	small = &accel_ch->iobuf.cache[0].small;
 	small_cache_count = small->cache_count;
 	STAILQ_INIT(&small_cache);
 	STAILQ_SWAP(&small->cache, &small_cache, spdk_iobuf_buffer);
