@@ -5276,9 +5276,10 @@ spdk_bdev_notify_blockcnt_change(struct spdk_bdev *bdev, uint64_t size)
  * Returns zero on success or non-zero if the byte parameters aren't divisible by the block size.
  */
 static uint64_t
-bdev_bytes_to_blocks(struct spdk_bdev *bdev, uint64_t offset_bytes, uint64_t *offset_blocks,
-		     uint64_t num_bytes, uint64_t *num_blocks)
+bdev_bytes_to_blocks(struct spdk_bdev_desc *desc, uint64_t offset_bytes,
+		     uint64_t *offset_blocks, uint64_t num_bytes, uint64_t *num_blocks)
 {
+	struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(desc);
 	uint32_t block_size = bdev->blocklen;
 	uint8_t shift_cnt;
 
@@ -5436,8 +5437,7 @@ spdk_bdev_read(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 nbytes, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, nbytes, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
@@ -5481,8 +5481,7 @@ spdk_bdev_readv(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 nbytes, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, nbytes, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
@@ -5680,8 +5679,7 @@ spdk_bdev_write(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 nbytes, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, nbytes, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
@@ -5784,8 +5782,7 @@ spdk_bdev_writev(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 len, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, len, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
@@ -6310,8 +6307,7 @@ spdk_bdev_write_zeroes(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 len, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, len, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
@@ -6380,8 +6376,7 @@ spdk_bdev_unmap(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 nbytes, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, nbytes, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
@@ -6451,8 +6446,7 @@ spdk_bdev_flush(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 {
 	uint64_t offset_blocks, num_blocks;
 
-	if (bdev_bytes_to_blocks(spdk_bdev_desc_get_bdev(desc), offset, &offset_blocks,
-				 length, &num_blocks) != 0) {
+	if (bdev_bytes_to_blocks(desc, offset, &offset_blocks, length, &num_blocks) != 0) {
 		return -EINVAL;
 	}
 
