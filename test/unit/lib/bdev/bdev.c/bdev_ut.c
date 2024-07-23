@@ -7453,6 +7453,37 @@ examine_claimed(void)
 	ut_testing_examine_claimed = false;
 }
 
+static void
+open_ext2_test(void)
+{
+	struct spdk_bdev_open_opts opts;
+	struct spdk_bdev *bdev;
+	struct spdk_bdev_desc *desc;
+	int rc;
+
+	bdev = allocate_bdev("bdev0");
+
+	rc = spdk_bdev_open_ext2("bdev0", true, bdev_ut_event_cb, NULL, NULL, &desc);
+	CU_ASSERT(rc == 0);
+	SPDK_CU_ASSERT_FATAL(desc != NULL);
+	CU_ASSERT(desc->write == true);
+	CU_ASSERT(desc->opts.no_metadata == false);
+
+	spdk_bdev_close(desc);
+
+	opts.size = sizeof(opts);
+	opts.no_metadata = true;
+
+	rc = spdk_bdev_open_ext2("bdev0", true, bdev_ut_event_cb, NULL, &opts, &desc);
+	CU_ASSERT(rc == 0);
+	CU_ASSERT(desc->write == true);
+	CU_ASSERT(desc->opts.no_metadata == true);
+
+	spdk_bdev_close(desc);
+
+	free_bdev(bdev);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -7522,6 +7553,7 @@ main(int argc, char **argv)
 	CU_ADD_TEST(suite, claim_v2_existing_v1);
 	CU_ADD_TEST(suite, claim_v1_existing_v2);
 	CU_ADD_TEST(suite, examine_claimed);
+	CU_ADD_TEST(suite, open_ext2_test);
 
 	allocate_cores(1);
 	allocate_threads(1);
