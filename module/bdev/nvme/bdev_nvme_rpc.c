@@ -365,6 +365,8 @@ rpc_bdev_nvme_attach_controller_examined(void *cb_ctx)
 	struct spdk_json_write_ctx *w;
 	size_t i;
 
+	SPDK_NOTICELOG("NVMe controller %s: attached and examined done\n", ctx->req.name);
+
 	w = spdk_jsonrpc_begin_result(request);
 	spdk_json_write_array_begin(w);
 	for (i = 0; i < ctx->bdev_count; i++) {
@@ -387,6 +389,8 @@ rpc_bdev_nvme_attach_controller_done(void *cb_ctx, size_t bdev_count, int rc)
 		free_rpc_bdev_nvme_attach_controller_ctx(ctx);
 		return;
 	}
+
+	SPDK_NOTICELOG("NVMe controller %s: attached, wait for examine\n", ctx->req.name);
 
 	ctx->bdev_count = bdev_count;
 	spdk_bdev_wait_for_examine(rpc_bdev_nvme_attach_controller_examined, ctx);
@@ -622,6 +626,9 @@ rpc_bdev_nvme_attach_controller(struct spdk_jsonrpc_request *request,
 	ctx->req.bdev_opts.from_discovery_service = false;
 	ctx->req.bdev_opts.dhchap_key = ctx->req.dhchap_key;
 	ctx->req.bdev_opts.dhchap_ctrlr_key = ctx->req.dhchap_ctrlr_key;
+
+	SPDK_NOTICELOG("NVMe controller %s: attaching\n", ctx->req.name);
+
 	rc = bdev_nvme_create(&trid, ctx->req.name, ctx->names, ctx->req.max_bdevs,
 			      rpc_bdev_nvme_attach_controller_done, ctx, &ctx->req.drv_opts,
 			      &ctx->req.bdev_opts, multipath);
@@ -749,9 +756,11 @@ static const struct spdk_json_object_decoder rpc_bdev_nvme_detach_controller_dec
 };
 
 static void
-rpc_bdev_nvme_detach_controller_done(void *arg, int rc)
+rpc_bdev_nvme_detach_controller_done(void *arg, char *name, int rc)
 {
 	struct spdk_jsonrpc_request *request = arg;
+
+	SPDK_NOTICELOG("NVMe controller %s: detached\n", name);
 
 	if (rc == 0) {
 		spdk_jsonrpc_send_bool_response(request, true);
@@ -777,6 +786,7 @@ rpc_bdev_nvme_detach_controller(struct spdk_jsonrpc_request *request,
 		goto cleanup;
 	}
 
+	SPDK_NOTICELOG("NVMe controller %s: detaching\n", req.name);
 	if (req.trtype != NULL) {
 		rc = spdk_nvme_transport_id_populate_trstring(&path.trid, req.trtype);
 		if (rc < 0) {

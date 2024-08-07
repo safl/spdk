@@ -290,10 +290,12 @@ rpc_vhost_create_blk_controller(struct spdk_jsonrpc_request *request,
 		goto invalid;
 	}
 
+	SPDK_NOTICELOG("Vhost blk controller %s, dev %s: creating\n", req.ctrlr, req.dev_name);
 	rc = spdk_vhost_blk_construct(req.ctrlr, req.cpumask, req.dev_name, req.transport, params);
 	if (rc < 0) {
 		goto invalid;
 	}
+	SPDK_NOTICELOG("Vhost blk controller %s, dev %s: created\n", req.ctrlr, req.dev_name);
 
 	free_rpc_vhost_blk_ctrlr(&req);
 
@@ -338,6 +340,7 @@ rpc_vhost_delete_controller(struct spdk_jsonrpc_request *request,
 		goto invalid;
 	}
 
+	SPDK_NOTICELOG("Vhost controller %s: deleting\n", req.ctrlr);
 	spdk_vhost_lock();
 	vdev = spdk_vhost_dev_find(req.ctrlr);
 	if (vdev == NULL) {
@@ -351,6 +354,8 @@ rpc_vhost_delete_controller(struct spdk_jsonrpc_request *request,
 	if (rc < 0) {
 		goto invalid;
 	}
+
+	SPDK_NOTICELOG("Vhost controller %s: deleted\n", req.ctrlr);
 
 	free_rpc_delete_vhost_ctrlr(&req);
 

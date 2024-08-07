@@ -7284,7 +7284,7 @@ test_disable_enable_ctrlr(void)
 }
 
 static void
-ut_delete_done(void *ctx, int rc)
+ut_delete_done(void *ctx, char *name, int rc)
 {
 	int *delete_done_rc = ctx;
 	*delete_done_rc = rc;

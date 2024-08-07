@@ -6410,7 +6410,7 @@ bdev_nvme_delete_complete_poll(void *arg)
 
 	spdk_poller_unregister(&ctx->poller);
 
-	ctx->delete_done(ctx->delete_done_ctx, rc);
+	ctx->delete_done(ctx->delete_done_ctx, ctx->name, rc);
 	free_bdev_nvme_delete_ctx(ctx);
 
 	return SPDK_POLLER_BUSY;

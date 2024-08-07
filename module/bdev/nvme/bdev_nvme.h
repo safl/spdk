@@ -343,7 +343,7 @@ void bdev_nvme_mdns_discovery_config_json(struct spdk_json_write_ctx *w);
 
 struct spdk_nvme_ctrlr *bdev_nvme_get_ctrlr(struct spdk_bdev *bdev);
 
-typedef void (*bdev_nvme_delete_done_fn)(void *ctx, int rc);
+typedef void (*bdev_nvme_delete_done_fn)(void *ctx, char *name, int rc);
 
 /**
  * Delete NVMe controller with all bdevs on top of it, or delete the specified path
