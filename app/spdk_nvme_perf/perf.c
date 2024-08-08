@@ -132,6 +132,7 @@ struct ns_worker_ctx {
 	uint64_t		current_queue_depth;
 	uint64_t		offset_in_ios;
 	bool			is_draining;
+	bool			interrupt_mode;
 
 	union {
 		struct {
@@ -139,6 +140,8 @@ struct ns_worker_ctx {
 			int				num_all_qpairs;
 			struct spdk_nvme_qpair		**qpair;
 			struct spdk_nvme_poll_group	*group;
+			struct spdk_fd_group		*fgrp;
+			int				*efds;
 			int				last_qpair;
 		} nvme;
 
@@ -245,6 +248,7 @@ static uint64_t g_elapsed_time_in_usec;
 static int g_warmup_time_in_sec;
 static uint32_t g_max_completions;
 static uint32_t g_disable_sq_cmb;
+static bool g_enable_interrupt;
 static bool g_use_uring;
 static bool g_warn;
 static bool g_header_digest;
@@ -951,13 +955,35 @@ perf_disconnect_cb(struct spdk_nvme_qpair *qpair, void *ctx)
 	ns_ctx->status = 1;
 }
 
+static int
+nvme_process_io(void *ctx)
+{
+	struct spdk_nvme_qpair *qpair = ctx;
+	int rc;
+
+	rc = spdk_nvme_qpair_process_completions(qpair, g_max_completions);
+	if (rc < 0) {
+		fprintf(stderr, "NVMe io qpair process completion error\n");
+		return -1;
+	}
+	return rc;
+}
+
 static int64_t
 nvme_check_io(struct ns_worker_ctx *ns_ctx)
 {
 	int64_t rc;
+	int timeout_wait = -1;
 
-	rc = spdk_nvme_poll_group_process_completions(ns_ctx->u.nvme.group, g_max_completions,
-			perf_disconnect_cb);
+	if (ns_ctx->interrupt_mode) {
+		if (spdk_nvme_poll_group_all_connected(ns_ctx->u.nvme.group)) {
+			perf_disconnect_cb(NULL, ns_ctx);
+		}
+		rc = spdk_fd_group_wait(ns_ctx->u.nvme.fgrp, timeout_wait);
+	} else {
+		rc = spdk_nvme_poll_group_process_completions(ns_ctx->u.nvme.group, g_max_completions,
+				perf_disconnect_cb);
+	}
 	if (rc < 0) {
 		fprintf(stderr, "NVMe io qpair process completion error\n");
 		ns_ctx->status = 1;
@@ -1005,7 +1031,9 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	struct ns_entry *entry = ns_ctx->entry;
 	struct spdk_nvme_poll_group *group;
 	struct spdk_nvme_qpair *qpair;
+	struct spdk_event_handler_opts event_opts;
 	uint64_t poll_timeout_tsc;
+	int qpair_efd;
 	int i, rc;
 
 	ns_ctx->u.nvme.num_active_qpairs = g_nr_io_queues_per_ns;
@@ -1019,7 +1047,11 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	if (opts.io_queue_requests < entry->num_io_requests) {
 		opts.io_queue_requests = entry->num_io_requests;
 	}
-	opts.delay_cmd_submit = true;
+
+	ns_ctx->interrupt_mode = g_enable_interrupt;
+	if (!ns_ctx->interrupt_mode) {
+		opts.delay_cmd_submit = true;
+	}
 	opts.create_only = true;
 
 	ctrlr_opts = spdk_nvme_ctrlr_get_opts(entry->u.nvme.ctrlr);
@@ -1033,6 +1065,20 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	}
 
 	group = ns_ctx->u.nvme.group;
+	if (ns_ctx->interrupt_mode) {
+		ns_ctx->u.nvme.efds = calloc(ns_ctx->u.nvme.num_all_qpairs, sizeof(int));
+		if (!ns_ctx->u.nvme.efds) {
+			spdk_nvme_poll_group_destroy(ns_ctx->u.nvme.group);
+			goto poll_group_failed;
+		}
+		rc = spdk_fd_group_create(&ns_ctx->u.nvme.fgrp);
+		if (rc != 0) {
+			printf("ERROR: spdk_fd_group_create failed\n");
+			spdk_nvme_poll_group_destroy(ns_ctx->u.nvme.group);
+			goto poll_group_failed;
+		}
+	}
+
 	for (i = 0; i < ns_ctx->u.nvme.num_all_qpairs; i++) {
 		ns_ctx->u.nvme.qpair[i] = spdk_nvme_ctrlr_alloc_io_qpair(entry->u.nvme.ctrlr, &opts,
 					  sizeof(opts));
@@ -1052,6 +1098,26 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 			printf("ERROR: unable to connect I/O qpair.\n");
 			spdk_nvme_ctrlr_free_io_qpair(qpair);
 			goto qpair_failed;
+		}
+
+		if (ns_ctx->interrupt_mode) {
+			qpair_efd = spdk_nvme_ctrlr_qpair_get_efd(qpair);
+			if (qpair_efd < 0) {
+				printf("ERROR: Invalid efd: %d\n", qpair_efd);
+				spdk_nvme_ctrlr_free_io_qpair(qpair);
+				goto qpair_failed;
+			}
+
+			ns_ctx->u.nvme.efds[i] = qpair_efd;
+			event_opts.events = SPDK_INTERRUPT_EVENT_IN;
+			event_opts.efd_type = SPDK_EFD_TYPE_VFIO;
+			rc = SPDK_FD_GROUP_ADD_EXT(ns_ctx->u.nvme.fgrp, qpair_efd, nvme_process_io,
+						   qpair, &event_opts);
+			if (rc) {
+				printf("ERROR: failed to add efd: %d to fgrp\n", qpair_efd);
+				spdk_nvme_ctrlr_free_io_qpair(qpair);
+				goto qpair_failed;
+			}
 		}
 	}
 
@@ -1074,12 +1140,19 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 
 qpair_failed:
 	for (; i > 0; --i) {
+		if (ns_ctx->interrupt_mode) {
+			spdk_fd_group_remove(ns_ctx->u.nvme.fgrp, ns_ctx->u.nvme.efds[i - 1]);
+		}
 		spdk_nvme_ctrlr_free_io_qpair(ns_ctx->u.nvme.qpair[i - 1]);
 	}
 
+	if (ns_ctx->interrupt_mode) {
+		spdk_fd_group_destroy(ns_ctx->u.nvme.fgrp);
+	}
 	spdk_nvme_poll_group_destroy(ns_ctx->u.nvme.group);
 poll_group_failed:
 	free(ns_ctx->u.nvme.qpair);
+	free(ns_ctx->u.nvme.efds);
 	return -1;
 }
 
@@ -1089,9 +1162,16 @@ nvme_cleanup_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	int i;
 
 	for (i = 0; i < ns_ctx->u.nvme.num_all_qpairs; i++) {
+		if (ns_ctx->interrupt_mode) {
+			spdk_fd_group_remove(ns_ctx->u.nvme.fgrp, ns_ctx->u.nvme.efds[i]);
+		}
 		spdk_nvme_ctrlr_free_io_qpair(ns_ctx->u.nvme.qpair[i]);
 	}
 
+	if (ns_ctx->interrupt_mode) {
+		spdk_fd_group_destroy(ns_ctx->u.nvme.fgrp);
+		free(ns_ctx->u.nvme.efds);
+	}
 	spdk_nvme_poll_group_destroy(ns_ctx->u.nvme.group);
 	free(ns_ctx->u.nvme.qpair);
 }
@@ -1938,6 +2018,7 @@ usage(char *program_name)
 	printf("\t\t Example: -b 0000:d8:00.0 -b 0000:d9:00.0\n");
 	printf("\t-V, --enable-vmd enable VMD enumeration\n");
 	printf("\t-D, --disable-sq-cmb disable submission queue in controller memory buffer, default: enabled\n");
+	printf("\t-E, --enable-interrupt enable interrupts on completion queue, default: disabled\n");
 	printf("\n");
 
 	printf("==== TCP OPTIONS ====\n\n");
@@ -2421,7 +2502,7 @@ alloc_key(const char *name, const char *path)
 	return key;
 }
 
-#define PERF_GETOPT_SHORT "a:b:c:d:e:ghi:lmo:q:r:k:s:t:w:z:A:C:DF:GHILM:NO:P:Q:RS:T:U:VZ:"
+#define PERF_GETOPT_SHORT "a:b:c:d:e:ghi:lmo:q:r:k:s:t:w:z:A:C:DEF:GHILM:NO:P:Q:RS:T:U:VZ:"
 
 static const struct option g_perf_cmdline_opts[] = {
 #define PERF_WARMUP_TIME	'a'
@@ -2466,6 +2547,8 @@ static const struct option g_perf_cmdline_opts[] = {
 	{"max-completion-per-poll",			required_argument,	NULL, PERF_MAX_COMPLETIONS_PER_POLL},
 #define PERF_DISABLE_SQ_CMB	'D'
 	{"disable-sq-cmb",			no_argument,	NULL, PERF_DISABLE_SQ_CMB},
+#define PERF_ENABLE_INTERRUPT	'E'
+	{"enable-interrupt",			no_argument,	NULL, PERF_ENABLE_INTERRUPT},
 #define PERF_ZIPF		'F'
 	{"zipf",				required_argument,	NULL, PERF_ZIPF},
 #define PERF_ENABLE_DEBUG	'G'
@@ -2683,6 +2766,9 @@ parse_args(int argc, char **argv, struct spdk_env_opts *env_opts)
 			break;
 		case PERF_DISABLE_SQ_CMB:
 			g_disable_sq_cmb = 1;
+			break;
+		case PERF_ENABLE_INTERRUPT:
+			g_enable_interrupt = 1;
 			break;
 		case PERF_ENABLE_DEBUG:
 #ifndef DEBUG
@@ -2981,6 +3067,9 @@ probe_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 		}
 		if (g_no_shn_notification) {
 			opts->no_shn_notification = true;
+		}
+		if (g_enable_interrupt) {
+			opts->enable_interrupts = true;
 		}
 	}
 
