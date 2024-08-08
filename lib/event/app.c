@@ -1353,17 +1353,21 @@ spdk_app_parse_args(int argc, char **argv, struct spdk_app_opts *opts,
 			opts->no_huge = true;
 			break;
 
-		case LOGFLAG_OPT_IDX:
-			rc = spdk_log_set_flag(optarg);
-			if (rc < 0) {
-				SPDK_ERRLOG("unknown flag: %s\n", optarg);
-				usage(app_usage);
-				goto out;
-			}
+		case LOGFLAG_OPT_IDX: {
+			char *log_flag = strtok(optarg, ",");
+			do {
+				rc = spdk_log_set_flag(log_flag);
+				if (rc < 0) {
+					SPDK_ERRLOG("unknown flag %s\n", log_flag);
+					usage(app_usage);
+					goto out;
+				}
+			} while ((log_flag = strtok(NULL, ",")) != NULL);
+		}
 #ifdef DEBUG
-			opts->print_level = SPDK_LOG_DEBUG;
+		opts->print_level = SPDK_LOG_DEBUG;
 #endif
-			break;
+		break;
 		case HUGE_UNLINK_OPT_IDX:
 			opts->unlink_hugepage = true;
 			break;

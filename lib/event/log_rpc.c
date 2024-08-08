@@ -191,6 +191,29 @@ rpc_log_get_level(struct spdk_jsonrpc_request *request,
 }
 SPDK_RPC_REGISTER("log_get_level", rpc_log_get_level, SPDK_RPC_STARTUP | SPDK_RPC_RUNTIME)
 
+typedef int (*log_flag_operation)(const char *);
+
+static int
+_log_flags_operation(char *flags, struct spdk_jsonrpc_request *request,
+		     log_flag_operation flag_operation_fn)
+{
+	char *log_flag = strtok(flags, ",");
+	int rc = 0;
+	do {
+		rc = flag_operation_fn(log_flag);
+		if (rc < 0) {
+			SPDK_DEBUGLOG(log_rpc, "tried to set invalid log flag %s\n", log_flag);
+			char err_msg[50] = {0};
+			snprintf(err_msg, sizeof(err_msg), "invalid log flag %s", log_flag);
+			spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+							 err_msg);
+			return rc;
+		}
+	} while ((log_flag = strtok(NULL, ",")) != NULL);
+
+	return rc;
+}
+
 static void
 rpc_log_set_flag(struct spdk_jsonrpc_request *request,
 		 const struct spdk_json_val *params)
@@ -205,10 +228,8 @@ rpc_log_set_flag(struct spdk_jsonrpc_request *request,
 		goto end;
 	}
 
-	if (spdk_log_set_flag(req.flag) != 0) {
-		SPDK_DEBUGLOG(log_rpc, "tried to set invalid log flag\n");
-		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
-						 "invalid log flag");
+	int rc = _log_flags_operation(req.flag, request, spdk_log_set_flag);
+	if (rc < 0) {
 		goto end;
 	}
 
@@ -232,10 +253,8 @@ rpc_log_clear_flag(struct spdk_jsonrpc_request *request,
 		goto end;
 	}
 
-	if (spdk_log_clear_flag(req.flag) != 0) {
-		SPDK_DEBUGLOG(log_rpc, "tried to clear invalid log flag\n");
-		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
-						 "invalid log flag");
+	int rc = _log_flags_operation(req.flag, request, spdk_log_clear_flag);
+	if (rc < 0) {
 		goto end;
 	}
 
