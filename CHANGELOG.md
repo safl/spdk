@@ -7,6 +7,9 @@
 Added `enable_interrupts` field to `spdk_nvme_ctrlr_opts` struct in order to enable interrupts.
 This is applicable only for PCIe transport.
 
+Added `spdk_nvme_ctrlr_qpair_get_efd()` API to retrieve the eventfd for the particular qpair
+of a given NVMe controller. This is applicable only for PCIe transport.
+
 ### env
 
 Added 3 new APIs to handle multiple interrupts for PCI device (`spdk_pci_device_enable_interrupts`,
