@@ -445,6 +445,19 @@ spdk_nvme_ctrlr_disconnect_io_qpair(struct spdk_nvme_qpair *qpair)
 	nvme_ctrlr_unlock(ctrlr);
 }
 
+int
+spdk_nvme_ctrlr_qpair_get_efd(struct spdk_nvme_qpair *qpair)
+{
+	struct spdk_nvme_ctrlr *ctrlr = qpair->ctrlr;
+	int rc;
+
+	nvme_ctrlr_lock(ctrlr);
+	rc = nvme_transport_qpair_get_efd(ctrlr, qpair);
+	nvme_ctrlr_unlock(ctrlr);
+
+	return rc;
+}
+
 struct spdk_nvme_qpair *
 spdk_nvme_ctrlr_alloc_io_qpair(struct spdk_nvme_ctrlr *ctrlr,
 			       const struct spdk_nvme_io_qpair_opts *user_opts,

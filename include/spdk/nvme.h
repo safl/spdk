@@ -1906,6 +1906,17 @@ void spdk_nvme_ctrlr_disconnect_io_qpair(struct spdk_nvme_qpair *qpair);
 int spdk_nvme_ctrlr_reconnect_io_qpair(struct spdk_nvme_qpair *qpair);
 
 /**
+ * Get the event file descriptor for I/O qpair.
+ *
+ * \param qpair Opaque handle of the qpair for which event fd has to be fetched.
+ *
+ * return a valid event fd on success.
+ * -ENOSYS if transport does not support fetching event fd for the qpair.
+ * -EINVAL if eventfds are not reserved, or interrupts are disabled.
+ */
+int spdk_nvme_ctrlr_qpair_get_efd(struct spdk_nvme_qpair *qpair);
+
+/**
  * Returns the reason the admin qpair for a given controller is disconnected.
  *
  * \param ctrlr The controller to check.
@@ -4540,6 +4551,8 @@ struct spdk_nvme_transport_ops {
 	int (*qpair_iterate_requests)(struct spdk_nvme_qpair *qpair,
 				      int (*iter_fn)(struct nvme_request *req, void *arg),
 				      void *arg);
+
+	int (*qpair_get_efd)(struct spdk_nvme_qpair *qpair);
 
 	void (*admin_qpair_abort_aers)(struct spdk_nvme_qpair *qpair);
 

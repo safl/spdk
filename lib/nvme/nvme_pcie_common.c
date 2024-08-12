@@ -59,6 +59,21 @@ nvme_pcie_qpair_reset(struct spdk_nvme_qpair *qpair)
 	return 0;
 }
 
+int
+nvme_pcie_qpair_get_efd(struct spdk_nvme_qpair *qpair)
+{
+	struct spdk_nvme_ctrlr *ctrlr = qpair->ctrlr;
+	struct spdk_pci_device *devhandle = nvme_ctrlr_proc_get_devhandle(ctrlr);
+	int efd = -1;
+
+	assert(devhandle != NULL);
+	if (ctrlr->opts.enable_interrupts) {
+		efd = spdk_pci_device_get_interrupt_efd_by_index(devhandle, qpair->id);
+	}
+
+	return efd;
+}
+
 static void
 nvme_qpair_construct_tracker(struct nvme_tracker *tr, uint16_t cid, uint64_t phys_addr)
 {
