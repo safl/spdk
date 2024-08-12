@@ -13,6 +13,9 @@ The APIs to handle PCI device interrupts have been modified as such:
 Added `enable_interrupt` field to `spdk_nvme_ctrlr_opts` struct in order to enable interrupts.
 This is applicable for PCIE transport only.
 
+Added `spdk_nvme_ctrlr_qpair_get_efd()` API to retrieve the eventfd for the particular qpair
+for the given NVMe controller. This is applicable for PCIE transport only.
+
 ## v24.09: (Upcoming Release)
 
 ### nvmf
