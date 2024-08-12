@@ -8,6 +8,10 @@ Added `enable_interrupts` field to `spdk_nvme_ctrlr_opts` structure in order to 
 This is only applicable for PCIe transport. This is only supported for primary process, and any
 secondary processes attempt to attach to the controller with interrupts will result in a failure.
 
+Added APIs `spdk_nvme_ctrlr_qpair_get_fd()` and `spdk_nvme_ctrlr_get_admin_qp_fd()` to retrieve the
+fd for an I/O and admin qpair respectively for a given NVMe controller. This is applicable only
+for the PCIe transport.
+
 ### env
 
 Added 3 APIs to handle multiple interrupts for PCI device `spdk_pci_device_enable_interrupts()`,

@@ -1908,6 +1908,28 @@ void spdk_nvme_ctrlr_disconnect_io_qpair(struct spdk_nvme_qpair *qpair);
 int spdk_nvme_ctrlr_reconnect_io_qpair(struct spdk_nvme_qpair *qpair);
 
 /**
+ * Get the file descriptor for I/O qpair.
+ *
+ * \param qpair Opaque handle of the qpair for which fd has to be fetched.
+ *
+ * \return a valid event fd on success.
+ * -ENOSYS if transport does not support fetching fd for the qpair.
+ * -EINVAL if fds are not reserved.
+ */
+int spdk_nvme_ctrlr_qpair_get_fd(struct spdk_nvme_qpair *qpair);
+
+/**
+ * Get the file descriptor for admin qpair of the controller.
+ *
+ * \param ctrlr Controller for which fd has to be fetched.
+ *
+ * \return a valid fd on success.
+ * -ENOSYS if transport does not support fetching fd for this controller.
+ * -EINVAL if fd is not reserved.
+ */
+int spdk_nvme_ctrlr_get_admin_qp_fd(struct spdk_nvme_ctrlr *ctrlr);
+
+/**
  * Returns the reason the admin qpair for a given controller is disconnected.
  *
  * \param ctrlr The controller to check.
@@ -4542,6 +4564,8 @@ struct spdk_nvme_transport_ops {
 	int (*qpair_iterate_requests)(struct spdk_nvme_qpair *qpair,
 				      int (*iter_fn)(struct nvme_request *req, void *arg),
 				      void *arg);
+
+	int (*qpair_get_fd)(struct spdk_nvme_qpair *qpair);
 
 	void (*admin_qpair_abort_aers)(struct spdk_nvme_qpair *qpair);
 
