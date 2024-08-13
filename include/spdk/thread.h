@@ -1032,6 +1032,12 @@ void spdk_spin_unlock(struct spdk_spinlock *sspin);
  */
 bool spdk_spin_held(struct spdk_spinlock *sspin);
 
+enum spdk_iobuf_numa_policy {
+	SPDK_IOBUF_NUMA_POLICY_FIXED,
+	SPDK_IOBUF_NUMA_POLICY_SOURCE,
+	SPDK_IOBUF_NUMA_POLICY_DESTINATION,
+};
+
 struct spdk_iobuf_opts {
 	/** Maximum number of small buffers */
 	uint64_t small_pool_count;
@@ -1052,6 +1058,12 @@ struct spdk_iobuf_opts {
 
 	/** Enable per-NUMA node buffer pools */
 	uint8_t	enable_numa;
+
+	/** FIXED, SOURCE or DESTINATION */
+	uint8_t numa_policy;
+
+	/** NUMA ID for allocation when numa_policy == FIXED */
+	uint8_t numa_id;
 };
 
 struct spdk_iobuf_pool_stats {
@@ -1236,6 +1248,10 @@ void spdk_iobuf_entry_abort(struct spdk_iobuf_channel *ch, struct spdk_iobuf_ent
  */
 void *spdk_iobuf_get(struct spdk_iobuf_channel *ch, uint64_t len, struct spdk_iobuf_entry *entry,
 		     spdk_iobuf_get_cb cb_fn);
+
+void *spdk_iobuf_get_numa(struct spdk_iobuf_channel *ch, uint64_t len, uint32_t src_numa_id,
+			  uint32_t dst_numa_id, struct spdk_iobuf_entry *entry,
+			  spdk_iobuf_get_cb cb_fn);
 
 /**
  * Release a buffer back to the iobuf pool.  If there are outstanding requests waiting for a buffer,

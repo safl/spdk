@@ -9,12 +9,40 @@
 #include "spdk/string.h"
 #include "spdk_internal/init.h"
 
+static int
+decode_numa_policy(const struct spdk_json_val *val, void *out)
+{
+	uint8_t *policy = out;
+	char *policy_str = NULL;
+	int rc;
+
+	rc = spdk_json_decode_string(val, &policy_str);
+	if (rc) {
+		return rc;
+	}
+
+	if (strcmp(policy_str, "source") == 0) {
+		*policy = SPDK_IOBUF_NUMA_POLICY_SOURCE;
+	} else if (strcmp(policy_str, "destination") == 0) {
+		*policy = SPDK_IOBUF_NUMA_POLICY_DESTINATION;
+	} else if (strcmp(policy_str, "fixed") == 0) {
+		*policy = SPDK_IOBUF_NUMA_POLICY_FIXED;
+	} else {
+		rc = -EINVAL;
+	}
+
+	free(policy_str);
+	return rc;
+}
+
 static const struct spdk_json_object_decoder rpc_iobuf_set_options_decoders[] = {
 	{"small_pool_count", offsetof(struct spdk_iobuf_opts, small_pool_count), spdk_json_decode_uint64, true},
 	{"large_pool_count", offsetof(struct spdk_iobuf_opts, large_pool_count), spdk_json_decode_uint64, true},
 	{"small_bufsize", offsetof(struct spdk_iobuf_opts, small_bufsize), spdk_json_decode_uint32, true},
 	{"large_bufsize", offsetof(struct spdk_iobuf_opts, large_bufsize), spdk_json_decode_uint32, true},
 	{"enable_numa", offsetof(struct spdk_iobuf_opts, enable_numa), spdk_json_decode_bool, true},
+	{"numa_policy", offsetof(struct spdk_iobuf_opts, numa_policy), decode_numa_policy, true},
+	{"numa_id", offsetof(struct spdk_iobuf_opts, numa_id), spdk_json_decode_uint8, true},
 };
 
 static void
