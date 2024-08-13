@@ -72,6 +72,9 @@ static struct iobuf g_iobuf = {
 		.large_pool_count = IOBUF_DEFAULT_LARGE_POOL_SIZE,
 		.small_bufsize = IOBUF_DEFAULT_SMALL_BUFSIZE,
 		.large_bufsize = IOBUF_DEFAULT_LARGE_BUFSIZE,
+		.enable_numa = 0,
+		.numa_policy = SPDK_IOBUF_NUMA_POLICY_SOURCE,
+		.numa_id = 0,
 	},
 };
 
@@ -336,10 +339,33 @@ spdk_iobuf_set_opts(const struct spdk_iobuf_opts *opts)
 	SET_FIELD(small_bufsize);
 	SET_FIELD(large_bufsize);
 	SET_FIELD(enable_numa);
+	SET_FIELD(numa_policy);
+	SET_FIELD(numa_id);
 
 	g_iobuf.opts.opts_size = opts->opts_size;
 
 #undef SET_FIELD
+
+	/* Do this part after the SET_FIELDs so that we can use
+	 * IOBUF_FOREACH_NUMA_ID().
+	 */
+	if (opts->numa_policy == SPDK_IOBUF_NUMA_POLICY_FIXED) {
+		bool found = false;
+		int32_t i;
+
+		IOBUF_FOREACH_NUMA_ID(i) {
+			if (i == opts->numa_id) {
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			SPDK_ERRLOG("numa_id %" PRIu32 " does not exist for "
+				    "numa_policy FIXED\n", opts->numa_id);
+			return -EINVAL;
+		}
+	}
 
 	return 0;
 }
@@ -369,6 +395,8 @@ spdk_iobuf_get_opts(struct spdk_iobuf_opts *opts, size_t opts_size)
 	SET_FIELD(small_bufsize);
 	SET_FIELD(large_bufsize);
 	SET_FIELD(enable_numa);
+	SET_FIELD(numa_policy);
+	SET_FIELD(numa_id);
 
 #undef SET_FIELD
 
@@ -689,15 +717,15 @@ spdk_iobuf_entry_abort(struct spdk_iobuf_channel *ch, struct spdk_iobuf_entry *e
 
 #define IOBUF_BATCH_SIZE 32
 
-void *
-spdk_iobuf_get(struct spdk_iobuf_channel *ch, uint64_t len,
+static void *
+iobuf_get_numa(struct spdk_iobuf_channel *ch, uint32_t socket_id, uint64_t len,
 	       struct spdk_iobuf_entry *entry, spdk_iobuf_get_cb cb_fn)
 {
 	struct spdk_iobuf_node_cache *cache;
 	struct spdk_iobuf_pool_cache *pool;
 	void *buf;
 
-	cache = &ch->cache[0];
+	cache = &ch->cache[socket_id];
 
 	assert(spdk_io_channel_get_thread(ch->parent) == spdk_get_thread());
 	if (len <= cache->small.bufsize) {
@@ -742,6 +770,42 @@ spdk_iobuf_get(struct spdk_iobuf_channel *ch, uint64_t len,
 	}
 
 	return (char *)buf;
+}
+
+void *
+spdk_iobuf_get(struct spdk_iobuf_channel *ch, uint64_t len,
+	       struct spdk_iobuf_entry *entry, spdk_iobuf_get_cb cb_fn)
+{
+	return iobuf_get_numa(ch, 0, len, entry, cb_fn);
+}
+
+void *
+spdk_iobuf_get_numa(struct spdk_iobuf_channel *ch, uint64_t len,
+		    uint32_t src_socket_id, uint32_t dst_socket_id,
+		    struct spdk_iobuf_entry *entry, spdk_iobuf_get_cb cb_fn)
+{
+	uint32_t socket_id;
+
+	if (!g_iobuf.opts.enable_numa || src_socket_id == (uint32_t)SPDK_ENV_SOCKET_ID_ANY) {
+		socket_id = 0;
+	} else {
+		switch (g_iobuf.opts.numa_policy) {
+		case SPDK_IOBUF_NUMA_POLICY_SOURCE:
+			socket_id = src_socket_id;
+			break;
+		case SPDK_IOBUF_NUMA_POLICY_DESTINATION:
+			socket_id = dst_socket_id;
+			break;
+		case SPDK_IOBUF_NUMA_POLICY_FIXED:
+			socket_id = g_iobuf.opts.numa_id;
+			break;
+		default:
+			assert(false);
+			socket_id = 0;
+		}
+	}
+
+	return iobuf_get_numa(ch, socket_id, len, entry, cb_fn);
 }
 
 void

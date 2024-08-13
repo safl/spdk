@@ -3,7 +3,8 @@
 #  All rights reserved.
 
 
-def iobuf_set_options(client, small_pool_count, large_pool_count, small_bufsize, large_bufsize, enable_numa=None):
+def iobuf_set_options(client, small_pool_count, large_pool_count, small_bufsize, large_bufsize,
+                      enable_numa=None, numa_policy=None, numa_id=None):
     """Set iobuf pool options.
 
     Args:
@@ -12,6 +13,8 @@ def iobuf_set_options(client, small_pool_count, large_pool_count, small_bufsize,
         small_bufsize: size of a small buffer
         large_bufsize: size of a large buffer
         enable_numa: enable per-NUMA buffer pools
+        numa_policy: "source", "destination" or "fixed"
+        numa_id: NUMA ID for fixed policy
     """
     params = {}
 
@@ -25,6 +28,10 @@ def iobuf_set_options(client, small_pool_count, large_pool_count, small_bufsize,
         params['large_bufsize'] = large_bufsize
     if enable_numa is not None:
         params['enable_numa'] = enable_numa
+    if numa_policy is not None:
+        params['numa_policy'] = numa_policy
+    if numa_id is not None:
+        params['numa_id'] = numa_id
 
     return client.call('iobuf_set_options', params)
 

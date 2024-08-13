@@ -52,6 +52,29 @@ iobuf_write_config_json(struct spdk_json_write_ctx *w)
 	spdk_json_write_named_uint32(w, "small_bufsize", opts.small_bufsize);
 	spdk_json_write_named_uint32(w, "large_bufsize", opts.large_bufsize);
 	spdk_json_write_named_bool(w, "enable_numa", opts.enable_numa);
+	if (opts.enable_numa) {
+		const char *policy;
+
+		switch (opts.numa_policy) {
+		case SPDK_IOBUF_NUMA_POLICY_SOURCE:
+			policy = "source";
+			break;
+		case SPDK_IOBUF_NUMA_POLICY_DESTINATION:
+			policy = "destination";
+			break;
+		case SPDK_IOBUF_NUMA_POLICY_FIXED:
+			policy = "fixed";
+			break;
+		default:
+			SPDK_ERRLOG("unknown numa_policy %d\n", opts.numa_policy);
+			policy = "unknown";
+			break;
+		}
+		spdk_json_write_named_string(w, "numa_policy", policy);
+		if (opts.numa_policy == SPDK_IOBUF_NUMA_POLICY_FIXED) {
+			spdk_json_write_named_uint8(w, "numa_id", opts.numa_id);
+		}
+	}
 	spdk_json_write_object_end(w);
 	spdk_json_write_object_end(w);
 
