@@ -872,6 +872,9 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			 bool stripped_buffers)
 {
 	struct spdk_iobuf_entry *entry = NULL;
+	uint32_t host_numa_id, bdev_numa_id = SPDK_ENV_NUMA_ID_ANY;
+	uint32_t src_numa_id, dst_numa_id;
+	struct spdk_nvmf_ns *ns = NULL;
 	uint32_t num_buffers;
 	uint32_t i = 0;
 	void *buffer;
@@ -889,9 +892,26 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 		entry = &req->iobuf.entry;
 	}
 
+	host_numa_id = spdk_nvmf_qpair_get_numa_id(req->qpair);
+	if (!nvmf_qpair_is_admin_queue(req->qpair) && req->qpair->ctrlr != NULL) {
+		ns = nvmf_ctrlr_get_ns(req->qpair->ctrlr, req->cmd->nvme_cmd.nsid);
+	}
+
+	if (ns) {
+		bdev_numa_id = spdk_bdev_get_numa_id(ns->bdev);
+	}
+	if (req->xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER) {
+		src_numa_id = host_numa_id;
+		dst_numa_id = bdev_numa_id;
+	} else {
+		src_numa_id = bdev_numa_id;
+		dst_numa_id = host_numa_id;
+	}
+
 	while (i < num_buffers) {
-		buffer = spdk_iobuf_get(group->buf_cache, spdk_min(io_unit_size, length), entry,
-					nvmf_request_iobuf_get_cb);
+		buffer = spdk_iobuf_get_numa(group->buf_cache, spdk_min(io_unit_size, length),
+					     src_numa_id, dst_numa_id, entry,
+					     nvmf_request_iobuf_get_cb);
 		if (spdk_unlikely(buffer == NULL)) {
 			req->iobuf.remaining_length = length;
 			return -ENOMEM;

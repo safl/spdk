@@ -52,6 +52,7 @@ DEFINE_STUB(ibv_dereg_mr, int, (struct ibv_mr *mr), 0);
 DEFINE_STUB(ibv_resize_cq, int, (struct ibv_cq *cq, int cqe), 0);
 DEFINE_STUB(spdk_mempool_lookup, struct spdk_mempool *, (const char *name), NULL);
 DEFINE_STUB(spdk_rdma_cm_id_get_numa_id, int32_t, (struct rdma_cm_id *cm_id), 0);
+DEFINE_STUB(spdk_bdev_get_numa_id, int32_t, (struct spdk_bdev *bdev), 0);
 
 /* ibv_reg_mr can be a macro, need to undefine it */
 #ifdef ibv_reg_mr
@@ -176,6 +177,8 @@ test_spdk_nvmf_rdma_request_parse_sgl(void)
 	poller.group = &group;
 	rqpair.poller = &poller;
 	rqpair.max_send_sge = SPDK_NVMF_MAX_SGL_ENTRIES;
+	rqpair.qpair.numa.id_valid = 1;
+	rqpair.qpair.numa.id = 0;
 
 	sgl = &cmd.nvme_cmd.dptr.sgl1;
 	rdma_req.recv = &recv;
@@ -856,6 +859,8 @@ test_spdk_nvmf_rdma_request_parse_sgl_with_md(void)
 	poller.group = &group;
 	rqpair.poller = &poller;
 	rqpair.max_send_sge = SPDK_NVMF_MAX_SGL_ENTRIES;
+	rqpair.qpair.numa.id_valid = 1;
+	rqpair.qpair.numa.id = 0;
 
 	sgl = &cmd.nvme_cmd.dptr.sgl1;
 	rdma_req.recv = &recv;

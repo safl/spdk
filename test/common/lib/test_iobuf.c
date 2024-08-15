@@ -110,6 +110,51 @@ spdk_iobuf_get(struct spdk_iobuf_channel *ch, uint64_t len,
 	return buf;
 }
 
+DEFINE_RETURN_MOCK(spdk_iobuf_get_numa, void *);
+void *
+spdk_iobuf_get_numa(struct spdk_iobuf_channel *ch, uint64_t len,
+		    uint32_t src_socket_id, uint32_t dst_socket_id,
+		    struct spdk_iobuf_entry *entry, spdk_iobuf_get_cb cb_fn)
+{
+	struct spdk_iobuf_node_cache *cache;
+	struct spdk_iobuf_pool_cache *pool;
+	uint32_t *count;
+	void *buf;
+
+	HANDLE_RETURN_MOCK(spdk_iobuf_get);
+
+	cache = &ch->cache[0];
+
+	if (len > g_iobuf.opts.small_bufsize) {
+		pool = &cache->large;
+		count = &g_iobuf.large_pool_count;
+	} else {
+		pool = &cache->small;
+		count = &g_iobuf.small_pool_count;
+	}
+
+	if (pool->cache_count > 0) {
+		buf = calloc(1, len);
+		CU_ASSERT(buf != NULL);
+		pool->cache_count--;
+		return buf;
+	}
+
+	if (*count == 0) {
+		if (entry) {
+			entry->cb_fn = cb_fn;
+			STAILQ_INSERT_TAIL(&g_iobuf_entries, entry, stailq);
+		}
+
+		return NULL;
+	}
+
+	buf = calloc(1, len);
+	CU_ASSERT(buf != NULL);
+	(*count)--;
+	return buf;
+}
+
 void
 spdk_iobuf_put(struct spdk_iobuf_channel *ch, void *buf, uint64_t len)
 {
