@@ -28,7 +28,7 @@ dumplogs() {
 	cat "$output_dir/nvmf-auth.log"
 }
 
-hostrpc() { "$rootdir/scripts/rpc.py" -s "$hostsock" "$@"; }
+hostrpc() { rpc_cmd -s "$hostsock" "$@"; }
 
 nvme_connect() {
 	# Force 1 I/O queue to speed up the connection and keep ctrlr loss timeout at 0 to ensure
@@ -57,6 +57,11 @@ nvme_set_keys() {
 }
 
 bdev_connect() {
+	$rootdir/scripts/rpc.py -s "$hostsock" bdev_nvme_attach_controller -t "$TEST_TRANSPORT" -f ipv4 \
+		-a "$NVMF_FIRST_TARGET_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" "$@"
+}
+
+_bdev_connect() {
 	hostrpc bdev_nvme_attach_controller -t "$TEST_TRANSPORT" -f ipv4 \
 		-a "$NVMF_FIRST_TARGET_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" "$@"
 }
@@ -68,7 +73,7 @@ connect_authenticate() {
 	ckey=(${ckeys[$3]:+--dhchap-ctrlr-key "ckey$3"})
 
 	rpc_cmd nvmf_subsystem_add_host "$subnqn" "$hostnqn" --dhchap-key "$key" "${ckey[@]}"
-	bdev_connect -b "nvme0" --dhchap-key "$key" "${ckey[@]}"
+	_bdev_connect -b "nvme0" --dhchap-key "$key" "${ckey[@]}"
 
 	[[ $(hostrpc bdev_nvme_get_controllers | jq -r '.[].name') == "nvme0" ]]
 	qpairs=$(rpc_cmd nvmf_subsystem_get_qpairs "$subnqn")
