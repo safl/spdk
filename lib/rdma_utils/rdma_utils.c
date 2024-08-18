@@ -5,6 +5,7 @@
 
 #include "spdk_internal/rdma_utils.h"
 
+#include "spdk/env.h"
 #include "spdk/log.h"
 #include "spdk/string.h"
 #include "spdk/likely.h"
@@ -108,6 +109,7 @@ rdma_check_contiguous_entries(uint64_t addr_1, uint64_t addr_2)
 }
 
 const struct spdk_mem_map_ops g_rdma_map_ops = {
+	.type = SPDK_MEM_MAP_T_RDMA,
 	.notify_cb = rdma_utils_mem_notify,
 	.are_contiguous = rdma_check_contiguous_entries
 };

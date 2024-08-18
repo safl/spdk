@@ -9,7 +9,7 @@ include $(SPDK_ROOT_DIR)/mk/spdk.app.mk
 include $(SPDK_ROOT_DIR)/mk/spdk.modules.mk
 
 SO_VER := 6
-SO_MINOR := 0
+SO_MINOR := 1
 SO_SUFFIX := $(SO_VER).$(SO_MINOR)
 
 # Build combined libspdk.so shared library

@@ -161,6 +161,7 @@ static int
 vfio_device_dma_map(struct vfio_device *device)
 {
 	const struct spdk_mem_map_ops vfio_map_ops = {
+		.type = SPDK_MEM_MAP_T_VFIO_USER,
 		.notify_cb = vfio_mr_map_notify,
 		.are_contiguous = NULL,
 	};

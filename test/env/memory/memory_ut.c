@@ -4,6 +4,7 @@
  */
 
 #include "env_dpdk/memory.c"
+#include "spdk/env.h"
 
 #define UNIT_TEST_NO_VTOPHYS
 #include "common/lib/test_env.c"
@@ -134,21 +135,25 @@ test_check_regions_contiguous(uint64_t addr1, uint64_t addr2)
 }
 
 const struct spdk_mem_map_ops test_mem_map_ops = {
+	.type = SPDK_MEM_MAP_T_VTOPHYS,
 	.notify_cb = test_mem_map_notify,
 	.are_contiguous = test_check_regions_contiguous
 };
 
 const struct spdk_mem_map_ops test_mem_map_ops_no_contig = {
+	.type = SPDK_MEM_MAP_T_VTOPHYS,
 	.notify_cb = test_mem_map_notify,
 	.are_contiguous = NULL
 };
 
 struct spdk_mem_map_ops test_map_ops_notify_fail = {
+	.type = SPDK_MEM_MAP_T_VTOPHYS,
 	.notify_cb = test_mem_map_notify_fail,
 	.are_contiguous = NULL
 };
 
 struct spdk_mem_map_ops test_map_ops_notify_checklen = {
+	.type = SPDK_MEM_MAP_T_VTOPHYS,
 	.notify_cb = test_mem_map_notify_checklen,
 	.are_contiguous = NULL
 };
