@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 
+#include "spdk/env.h"
 #include "spdk/stdinc.h"
 
 #include <sys/eventfd.h>
@@ -621,6 +622,7 @@ virtio_user_register_mem(struct virtio_dev *vdev)
 {
 	struct virtio_user_dev *dev = vdev->ctx;
 	const struct spdk_mem_map_ops virtio_user_map_ops = {
+		.type = SPDK_MEM_MAP_T_VIRTIO_USER,
 		.notify_cb = virtio_user_map_notify,
 		.are_contiguous = NULL
 	};

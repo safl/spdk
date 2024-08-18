@@ -1372,10 +1372,18 @@ typedef int (*spdk_mem_map_notify_cb)(void *cb_ctx, struct spdk_mem_map *map,
 
 typedef int (*spdk_mem_map_contiguous_translations)(uint64_t addr_1, uint64_t addr_2);
 
+enum spdk_mem_map_type {
+	SPDK_MEM_MAP_T_VTOPHYS = 0,
+	SPDK_MEM_MAP_T_RDMA = 1,
+	SPDK_MEM_MAP_T_VFIO_USER = 2,
+	SPDK_MEM_MAP_T_VIRTIO_USER = 3,
+};
+
 /**
  * A function table to be implemented by each memory map.
  */
 struct spdk_mem_map_ops {
+	enum spdk_mem_map_type type;
 	spdk_mem_map_notify_cb notify_cb;
 	spdk_mem_map_contiguous_translations are_contiguous;
 };
@@ -1455,6 +1463,25 @@ uint64_t spdk_mem_map_translate(const struct spdk_mem_map *map, uint64_t vaddr, 
  */
 int spdk_mem_register(void *vaddr, size_t len);
 
+#define SPDK_MEM_F_VTOPHYS	(1ULL << 0)
+#define SPDK_MEM_F_RDMA	(1ULL << 1)
+#define SPDK_MEM_F_VFIO_USER	(1ULL << 2)
+#define SPDK_MEM_F_VIRTIO_USER	(1ULL << 3)
+#define SPDK_MEM_F_ALL	(SPDK_MEM_F_RDMA | SPDK_MEM_F_VFIO_USER | SPDK_MEM_F_VIRTIO_USER)
+
+/**
+ * Register the specified memory region for address translation with flag.
+ *
+ * The memory region must map to pinned huge pages (2MB or greater).
+ *
+ * \param vaddr Virtual address to register.
+ * \param len Length in bytes of the vaddr.
+ * \param flags Flag to control which hook was called.
+ *
+ * \return 0 on success, negative errno on failure.
+ */
+int spdk_mem_register_ext(void *vaddr, size_t len, uint64_t flags);
+
 /**
  * Unregister the specified memory region from vtophys address translation.
  *
@@ -1467,6 +1494,20 @@ int spdk_mem_register(void *vaddr, size_t len);
  * \return 0 on success, negative errno on failure.
  */
 int spdk_mem_unregister(void *vaddr, size_t len);
+
+/**
+ * Unregister the specified memory region from vtophys address translation with flag.
+ *
+ * The caller must ensure all in-flight DMA operations to this memory region
+ * are completed or cancelled before calling this function.
+ *
+ * \param vaddr Virtual address to unregister.
+ * \param len Length in bytes of the vaddr.
+ * \param flags Flag to control which hook was called.
+ *
+ * \return 0 on success, negative errno on failure.
+ */
+int spdk_mem_unregister_ext(void *vaddr, size_t len, uint64_t flags);
 
 /**
  * Reserve the address space specified in all memory maps.
