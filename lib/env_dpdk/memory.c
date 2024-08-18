@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 
+#include "spdk/env.h"
 #include "spdk/stdinc.h"
 
 #include "env_internal.h"
@@ -328,8 +329,25 @@ spdk_mem_map_free(struct spdk_mem_map **pmap)
 	*pmap = NULL;
 }
 
+static bool
+should_notify_mem(enum spdk_mem_map_type map_type, uint64_t flags)
+{
+	switch (map_type) {
+	case SPDK_MEM_MAP_T_VTOPHYS:
+		return flags & SPDK_MEM_F_VTOPHYS;
+	case SPDK_MEM_MAP_T_RDMA:
+		return flags & SPDK_MEM_F_RDMA;
+	case SPDK_MEM_MAP_T_VFIO_USER:
+		return flags & SPDK_MEM_F_VFIO_USER;
+	case SPDK_MEM_MAP_T_VIRTIO_USER:
+		return flags & SPDK_MEM_F_VIRTIO_USER;
+	default:
+		return false;
+	}
+}
+
 int
-spdk_mem_register(void *_vaddr, size_t len)
+spdk_mem_register_ext(void *_vaddr, size_t len, uint64_t flags)
 {
 	struct spdk_mem_map *map;
 	int rc;
@@ -378,11 +396,12 @@ spdk_mem_register(void *_vaddr, size_t len)
 	}
 
 	TAILQ_FOREACH(map, &g_spdk_mem_maps, tailq) {
-		rc = map->ops.notify_cb(map->cb_ctx, map, SPDK_MEM_MAP_NOTIFY_REGISTER,
-					(void *)seg_vaddr, seg_len);
-		if (rc != 0) {
-			pthread_mutex_unlock(&g_spdk_mem_map_mutex);
-			return rc;
+		if (should_notify_mem(map->ops.type, flags)) {
+			rc = map->ops.notify_cb(map->cb_ctx, map, SPDK_MEM_MAP_NOTIFY_REGISTER, (void *)seg_vaddr, seg_len);
+			if (rc != 0) {
+				pthread_mutex_unlock(&g_spdk_mem_map_mutex);
+				return rc;
+			}
 		}
 	}
 
@@ -391,7 +410,13 @@ spdk_mem_register(void *_vaddr, size_t len)
 }
 
 int
-spdk_mem_unregister(void *_vaddr, size_t len)
+spdk_mem_register(void *vaddr, size_t len)
+{
+	return spdk_mem_register_ext(vaddr, len, SPDK_MEM_F_ALL);
+}
+
+int
+spdk_mem_unregister_ext(void *_vaddr, size_t len, uint64_t flags)
 {
 	struct spdk_mem_map *map;
 	int rc;
@@ -452,11 +477,13 @@ spdk_mem_unregister(void *_vaddr, size_t len)
 
 		if (seg_len > 0 && (reg & REG_MAP_NOTIFY_START)) {
 			TAILQ_FOREACH_REVERSE(map, &g_spdk_mem_maps, spdk_mem_map_head, tailq) {
-				rc = map->ops.notify_cb(map->cb_ctx, map, SPDK_MEM_MAP_NOTIFY_UNREGISTER,
-							(void *)seg_vaddr, seg_len);
-				if (rc != 0) {
-					pthread_mutex_unlock(&g_spdk_mem_map_mutex);
-					return rc;
+				if (should_notify_mem(map->ops.type, flags)) {
+					rc = map->ops.notify_cb(map->cb_ctx, map, SPDK_MEM_MAP_NOTIFY_UNREGISTER, (void *)seg_vaddr,
+								seg_len);
+					if (rc != 0) {
+						pthread_mutex_unlock(&g_spdk_mem_map_mutex);
+						return rc;
+					}
 				}
 			}
 
@@ -483,6 +510,12 @@ spdk_mem_unregister(void *_vaddr, size_t len)
 
 	pthread_mutex_unlock(&g_spdk_mem_map_mutex);
 	return 0;
+}
+
+int
+spdk_mem_unregister(void *vaddr, size_t len)
+{
+	return spdk_mem_unregister_ext(vaddr, len, SPDK_MEM_F_ALL);
 }
 
 int
@@ -1478,11 +1511,13 @@ int
 vtophys_init(void)
 {
 	const struct spdk_mem_map_ops vtophys_map_ops = {
+		.type = SPDK_MEM_MAP_T_VTOPHYS,
 		.notify_cb = vtophys_notify,
 		.are_contiguous = vtophys_check_contiguous_entries,
 	};
 
 	const struct spdk_mem_map_ops phys_ref_map_ops = {
+		.type = SPDK_MEM_MAP_T_VTOPHYS,
 		.notify_cb = NULL,
 		.are_contiguous = NULL,
 	};

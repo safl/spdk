@@ -115,7 +115,9 @@
 	spdk_mem_map_clear_translation;
 	spdk_mem_map_translate;
 	spdk_mem_register;
+	spdk_mem_register_ext;
 	spdk_mem_unregister;
+	spdk_mem_unregister_ext;
 	spdk_mem_get_fd_and_offset;
 	spdk_pci_event_listen;
 	spdk_pci_get_event;

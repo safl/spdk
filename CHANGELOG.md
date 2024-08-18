@@ -16,6 +16,11 @@ to `multipath` field in spdk_bdev_nvme_ctrlr_opts structure passed as a paramete
 If multipathing shall be enabled for nvme bdev, `bdev_opts.multipath` shall be set to `true`. When
 `bdev_opts.multipath` is set to `false`, failover mode is enabled.
 
+### env
+
+Added `spdk_mem_(un)register_ext` API and new enum type `spdk_mem_map_type` for more precise
+memory regitser control.
+
 ## v24.09
 
 ### accel
