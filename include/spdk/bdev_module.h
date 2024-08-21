@@ -884,8 +884,20 @@ struct spdk_bdev_io_nvme_passthru_params {
 	/* For SG buffer cases, number of iovecs in iovec array. */
 	int iovcnt;
 
+<<<<<<< HEAD
 	/* The data buffer to transfer */
 	void *buf;
+=======
+			/** DIF context */
+			struct spdk_dif_ctx dif_ctx;
+
+			/** DIF error information */
+			struct spdk_dif_error dif_err;
+
+			struct {
+				/** Whether the buffer should be populated with the real data */
+				uint8_t populate : 1;
+>>>>>>> 01d3dd437 (bdev: Embed spdk_dif_ctx and spdk_dif_error into spdk_bdev_io)
 
 	/* The number of bytes to transfer */
 	size_t nbytes;
