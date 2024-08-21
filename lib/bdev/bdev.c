@@ -935,6 +935,24 @@ bdev_io_use_accel_sequence(struct spdk_bdev_io *bdev_io)
 	return bdev_io->internal.f.has_accel_sequence;
 }
 
+static inline uint32_t
+bdev_desc_get_block_size(struct spdk_bdev_desc *desc)
+{
+	struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(desc);
+
+	if (spdk_unlikely(desc->opts.no_metadata)) {
+		return spdk_bdev_get_data_block_size(bdev);
+	} else {
+		return bdev->blocklen;
+	}
+}
+
+static inline uint32_t
+bdev_io_get_block_size(struct spdk_bdev_io *bdev_io)
+{
+	return bdev_desc_get_block_size(bdev_io->internal.desc);
+}
+
 static inline void
 bdev_queue_nomem_io_head(struct spdk_bdev_shared_resource *shared_resource,
 			 struct spdk_bdev_io *bdev_io, enum bdev_io_retry_state state)
@@ -2587,7 +2605,7 @@ bdev_is_read_io(struct spdk_bdev_io *bdev_io)
 static uint64_t
 bdev_get_io_size_in_byte(struct spdk_bdev_io *bdev_io)
 {
-	struct spdk_bdev	*bdev = bdev_io->bdev;
+	uint32_t blocklen = bdev_io_get_block_size(bdev_io);
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_NVME_IO:
@@ -2595,11 +2613,11 @@ bdev_get_io_size_in_byte(struct spdk_bdev_io *bdev_io)
 		return bdev_io->u.nvme_passthru.nbytes;
 	case SPDK_BDEV_IO_TYPE_READ:
 	case SPDK_BDEV_IO_TYPE_WRITE:
-		return bdev_io->u.bdev.num_blocks * bdev->blocklen;
+		return bdev_io->u.bdev.num_blocks * blocklen;
 	case SPDK_BDEV_IO_TYPE_ZCOPY:
 		/* Track the data in the start phase only */
 		if (bdev_io->u.bdev.zcopy.start) {
-			return bdev_io->u.bdev.num_blocks * bdev->blocklen;
+			return bdev_io->u.bdev.num_blocks * blocklen;
 		} else {
 			return 0;
 		}
@@ -3123,7 +3141,7 @@ _bdev_rw_split(void *_bdev_io)
 	uint32_t parent_iov_offset, parent_iovcnt, parent_iovpos, child_iovcnt;
 	uint32_t to_next_boundary, to_next_boundary_bytes, to_last_block_bytes;
 	uint32_t iovcnt, iov_len, child_iovsize;
-	uint32_t blocklen = bdev->blocklen;
+	uint32_t blocklen;
 	uint32_t io_boundary;
 	uint32_t max_segment_size = bdev->max_segment_size;
 	uint32_t max_child_iovcnt = bdev->max_num_segments;
@@ -3146,8 +3164,10 @@ _bdev_rw_split(void *_bdev_io)
 
 	assert(bdev_io->internal.f.split);
 
-	remaining = bdev_io->internal.split.remaining_num_blocks;
-	current_offset = bdev_io->internal.split.current_offset_blocks;
+	blocklen = bdev_io_get_block_size(bdev_io);
+
+	remaining = bdev_io->u.bdev.split_remaining_num_blocks;
+	current_offset = bdev_io->u.bdev.split_current_offset_blocks;
 	parent_offset = bdev_io->u.bdev.offset_blocks;
 	parent_iov_offset = (current_offset - parent_offset) * blocklen;
 	parent_iovcnt = bdev_io->u.bdev.iovcnt;
@@ -3463,7 +3483,7 @@ bdev_io_split(struct spdk_bdev_io *bdev_io)
 		} else {
 			assert(bdev_io->type == SPDK_BDEV_IO_TYPE_READ);
 			spdk_bdev_io_get_buf(bdev_io, bdev_rw_split_get_buf_cb,
-					     bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen);
+					     bdev_io->u.bdev.num_blocks * bdev_io_get_block_size(bdev_io));
 		}
 		break;
 	case SPDK_BDEV_IO_TYPE_UNMAP:
@@ -5242,8 +5262,7 @@ static uint64_t
 bdev_bytes_to_blocks(struct spdk_bdev_desc *desc, uint64_t offset_bytes,
 		     uint64_t *offset_blocks, uint64_t num_bytes, uint64_t *num_blocks)
 {
-	struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(desc);
-	uint32_t block_size = bdev->blocklen;
+	uint32_t block_size = bdev_desc_get_block_size(desc);
 	uint8_t shift_cnt;
 
 	/* Avoid expensive div operations if possible. These spdk_u32 functions are very cheap. */
@@ -5378,7 +5397,7 @@ bdev_read_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch
 	bdev_io->type = SPDK_BDEV_IO_TYPE_READ;
 	bdev_io->u.bdev.iovs = &bdev_io->iov;
 	bdev_io->u.bdev.iovs[0].iov_base = buf;
-	bdev_io->u.bdev.iovs[0].iov_len = num_blocks * bdev->blocklen;
+	bdev_io->u.bdev.iovs[0].iov_len = num_blocks * bdev_desc_get_block_size(desc);
 	bdev_io->u.bdev.iovcnt = 1;
 	bdev_io->u.bdev.md_buf = md_buf;
 	bdev_io->u.bdev.num_blocks = num_blocks;
@@ -5620,7 +5639,7 @@ bdev_write_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_channel *c
 	bdev_io->type = SPDK_BDEV_IO_TYPE_WRITE;
 	bdev_io->u.bdev.iovs = &bdev_io->iov;
 	bdev_io->u.bdev.iovs[0].iov_base = buf;
-	bdev_io->u.bdev.iovs[0].iov_len = num_blocks * bdev->blocklen;
+	bdev_io->u.bdev.iovs[0].iov_len = num_blocks * bdev_desc_get_block_size(desc);
 	bdev_io->u.bdev.iovcnt = 1;
 	bdev_io->u.bdev.md_buf = md_buf;
 	bdev_io->u.bdev.num_blocks = num_blocks;
@@ -5988,7 +6007,7 @@ bdev_compare_blocks_with_md(struct spdk_bdev_desc *desc, struct spdk_io_channel 
 	bdev_io->type = SPDK_BDEV_IO_TYPE_COMPARE;
 	bdev_io->u.bdev.iovs = &bdev_io->iov;
 	bdev_io->u.bdev.iovs[0].iov_base = buf;
-	bdev_io->u.bdev.iovs[0].iov_len = num_blocks * bdev->blocklen;
+	bdev_io->u.bdev.iovs[0].iov_len = num_blocks * bdev_desc_get_block_size(desc);
 	bdev_io->u.bdev.iovcnt = 1;
 	bdev_io->u.bdev.md_buf = md_buf;
 	bdev_io->u.bdev.num_blocks = num_blocks;
@@ -7202,7 +7221,7 @@ bdev_io_update_io_stat(struct spdk_bdev_io *bdev_io, uint64_t tsc_diff)
 	enum spdk_bdev_io_status io_status = bdev_io->internal.status;
 	struct spdk_bdev_io_stat *io_stat = bdev_io->internal.ch->stat;
 	uint64_t num_blocks = bdev_io->u.bdev.num_blocks;
-	uint32_t blocklen = bdev_io->bdev->blocklen;
+	uint32_t blocklen = bdev_io_get_block_size(bdev_io);
 
 	if (spdk_likely(io_status == SPDK_BDEV_IO_STATUS_SUCCESS)) {
 		switch (bdev_io->type) {
