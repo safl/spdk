@@ -625,7 +625,7 @@ bs_blob_io_unit_to_lba(struct spdk_blob *blob, uint64_t io_unit)
 /* Given an io_unit offset into a blob, look up the number of io_units until the
  * next cluster boundary.
  */
-static inline uint32_t
+static inline uint64_t
 bs_num_io_units_to_cluster_boundary(struct spdk_blob *blob, uint64_t io_unit)
 {
 	uint64_t	io_units_per_cluster;
