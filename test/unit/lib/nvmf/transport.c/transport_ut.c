@@ -29,6 +29,8 @@ struct spdk_nvmf_transport_opts g_rdma_ut_transport_opts = {
 DEFINE_STUB(spdk_nvme_transport_id_compare, int, (const struct spdk_nvme_transport_id *trid1,
 		const struct spdk_nvme_transport_id *trid2), 0);
 DEFINE_STUB_V(spdk_nvmf_tgt_new_qpair, (struct spdk_nvmf_tgt *tgt, struct spdk_nvmf_qpair *qpair));
+DEFINE_STUB(spdk_nvmf_tgt_find_subsystem_by_id, struct spdk_nvmf_subsystem *,
+		(struct spdk_nvmf_tgt *tgt, uint32_t id), NULL);
 DEFINE_STUB(spdk_nvmf_request_get_dif_ctx, bool, (struct spdk_nvmf_request *req,
 		struct spdk_dif_ctx *dif_ctx), false);
 DEFINE_STUB(spdk_nvmf_qpair_disconnect, int, (struct spdk_nvmf_qpair *qpair), 0);

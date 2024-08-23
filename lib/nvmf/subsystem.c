@@ -262,9 +262,10 @@ spdk_nvmf_subsystem_create(struct spdk_nvmf_tgt *tgt,
 	subsystem->id = sid;
 	subsystem->subtype = type;
 	subsystem->max_nsid = num_ns;
-	subsystem->next_cntlid = 0;
+	subsystem->next_cntlid = sid << NVMF_CNTLID_SHIFT;
 	subsystem->min_cntlid = NVMF_MIN_CNTLID;
 	subsystem->max_cntlid = NVMF_MAX_CNTLID;
+	subsystem->numa_id = SPDK_ENV_NUMA_ID_ANY;
 	snprintf(subsystem->subnqn, sizeof(subsystem->subnqn), "%s", nqn);
 	pthread_mutex_init(&subsystem->mutex, NULL);
 	TAILQ_INIT(&subsystem->listeners);
@@ -2123,6 +2124,8 @@ spdk_nvmf_subsystem_add_ns_ext(struct spdk_nvmf_subsystem *subsystem, const char
 			return 0;
 		}
 	}
+
+	subsystem->numa_id = spdk_bdev_get_numa_id(ns->bdev);
 
 	rc = spdk_bdev_module_claim_bdev(ns->bdev, ns->desc, &ns_bdev_module);
 	if (rc != 0) {

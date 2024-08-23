@@ -29,6 +29,7 @@
 	spdk_nvmf_subsystem_pause;
 	spdk_nvmf_subsystem_resume;
 	spdk_nvmf_tgt_find_subsystem;
+	spdk_nvmf_tgt_find_subsystem_by_id;
 	spdk_nvmf_subsystem_get_first;
 	spdk_nvmf_subsystem_get_next;
 	spdk_nvmf_ns_add_host;

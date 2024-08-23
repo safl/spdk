@@ -46,6 +46,8 @@ DEFINE_STUB(spdk_nvmf_request_get_dif_ctx, bool, (struct spdk_nvmf_request *req,
 DEFINE_STUB_V(spdk_nvme_trid_populate_transport, (struct spdk_nvme_transport_id *trid,
 		enum spdk_nvme_transport_type trtype));
 DEFINE_STUB_V(spdk_nvmf_tgt_new_qpair, (struct spdk_nvmf_tgt *tgt, struct spdk_nvmf_qpair *qpair));
+DEFINE_STUB(spdk_nvmf_tgt_find_subsystem_by_id, struct spdk_nvmf_subsystem *,
+		(struct spdk_nvmf_tgt *tgt, uint32_t id), NULL);
 DEFINE_STUB(nvmf_ctrlr_abort_request, int, (struct spdk_nvmf_request *req), 0);
 DEFINE_STUB(spdk_nvme_transport_id_adrfam_str, const char *, (enum spdk_nvmf_adrfam adrfam), NULL);
 DEFINE_STUB(ibv_dereg_mr, int, (struct ibv_mr *mr), 0);

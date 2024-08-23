@@ -26,6 +26,7 @@
 /* The spec reserves cntlid values in the range FFF0h to FFFFh. */
 #define NVMF_MIN_CNTLID 1
 #define NVMF_MAX_CNTLID 0xFFEF
+#define NVMF_CNTLID_SHIFT 8
 
 enum spdk_nvmf_tgt_state {
 	NVMF_TGT_IDLE = 0,
@@ -303,6 +304,8 @@ struct spdk_nvmf_subsystem {
 
 	/* FDP related fields */
 	bool						fdp_supported;
+
+	int32_t						numa_id;
 
 	/* Zoned storage related fields */
 	uint64_t					max_zone_append_size_kib;

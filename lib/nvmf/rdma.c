@@ -332,6 +332,8 @@ struct spdk_nvmf_rdma_qpair {
 	/* The maximum number of RDMA SEND operations at one time */
 	uint32_t				max_send_depth;
 
+	uint16_t				private_cntlid;
+
 	/* The current number of outstanding WRs from this qpair's
 	 * recv queue. Should not exceed device->attr.max_queue_depth.
 	 */
@@ -441,6 +443,7 @@ struct spdk_nvmf_rdma_poll_group_stat {
 struct spdk_nvmf_rdma_poll_group {
 	struct spdk_nvmf_transport_poll_group		group;
 	struct spdk_nvmf_rdma_poll_group_stat		stat;
+	int32_t						numa_id;
 	TAILQ_HEAD(, spdk_nvmf_rdma_poller)		pollers;
 	TAILQ_ENTRY(spdk_nvmf_rdma_poll_group)		link;
 };
@@ -1377,6 +1380,7 @@ nvmf_rdma_connect(struct spdk_nvmf_transport *transport, struct rdma_cm_event *e
 	rqpair->max_read_depth = max_read_depth;
 	rqpair->cm_id = event->id;
 	rqpair->listen_id = event->listen_id;
+	rqpair->private_cntlid = private_data->cntlid;
 	rqpair->qpair.transport = transport;
 	STAILQ_INIT(&rqpair->ibv_events);
 	/* use qid from the private data to determine the qpair type
@@ -4113,6 +4117,8 @@ nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport,
 		rtransport->conn_sched.next_io_pg = rgroup;
 	}
 
+	rgroup->numa_id = spdk_env_get_numa_id(spdk_env_get_current_core());
+
 	return &rgroup->group;
 }
 
@@ -4138,9 +4144,11 @@ nvmf_rdma_get_optimal_poll_group(struct spdk_nvmf_qpair *qpair)
 	struct spdk_nvmf_rdma_transport *rtransport;
 	struct spdk_nvmf_rdma_poll_group **pg;
 	struct spdk_nvmf_transport_poll_group *result;
+	struct spdk_nvmf_rdma_qpair *rqpair;
 	uint32_t count;
 
 	rtransport = SPDK_CONTAINEROF(qpair->transport, struct spdk_nvmf_rdma_transport, transport);
+	rqpair = SPDK_CONTAINEROF(qpair, struct spdk_nvmf_rdma_qpair, qpair);
 
 	if (TAILQ_EMPTY(&rtransport->poll_groups)) {
 		return NULL;
@@ -4149,14 +4157,19 @@ nvmf_rdma_get_optimal_poll_group(struct spdk_nvmf_qpair *qpair)
 	if (qpair->qid == 0) {
 		pg = &rtransport->conn_sched.next_admin_pg;
 	} else {
-		struct spdk_nvmf_rdma_poll_group *pg_min, *pg_start, *pg_current;
-		uint32_t min_value;
+		struct spdk_nvmf_rdma_poll_group *pg_min, *pg_min_numa, *pg_start, *pg_current;
+		struct spdk_nvmf_subsystem *subsystem;
+		uint32_t min_value, min_numa_value;
 
+		subsystem = spdk_nvmf_tgt_find_subsystem_by_id(qpair->transport->tgt,
+							       rqpair->private_cntlid >> 8);
 		pg = &rtransport->conn_sched.next_io_pg;
-		pg_min = *pg;
+		pg_min = NULL;
+		pg_min_numa = NULL;
 		pg_start = *pg;
 		pg_current = *pg;
-		min_value = nvmf_poll_group_get_io_qpair_count(pg_current->group.group);
+		min_value = UINT32_MAX;
+		min_numa_value = UINT32_MAX;
 
 		while (1) {
 			count = nvmf_poll_group_get_io_qpair_count(pg_current->group.group);
@@ -4166,16 +4179,25 @@ nvmf_rdma_get_optimal_poll_group(struct spdk_nvmf_qpair *qpair)
 				pg_min = pg_current;
 			}
 
+			if (count < min_numa_value && pg_current->numa_id == subsystem->numa_id) {
+				min_numa_value = count;
+				pg_min_numa = pg_current;
+			}
+
 			pg_current = TAILQ_NEXT(pg_current, link);
 			if (pg_current == NULL) {
 				pg_current = TAILQ_FIRST(&rtransport->poll_groups);
 			}
 
-			if (pg_current == pg_start || min_value == 0) {
+			if (pg_current == pg_start || min_numa_value == 0) {
 				break;
 			}
 		}
-		*pg = pg_min;
+		if (min_numa_value <= min_value + 4) {
+			*pg = pg_min_numa;
+		} else {
+			*pg = pg_min;
+		}
 	}
 
 	assert(*pg != NULL);

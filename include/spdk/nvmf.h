@@ -551,6 +551,9 @@ int spdk_nvmf_subsystem_resume(struct spdk_nvmf_subsystem *subsystem,
 struct spdk_nvmf_subsystem *spdk_nvmf_tgt_find_subsystem(struct spdk_nvmf_tgt *tgt,
 		const char *subnqn);
 
+struct spdk_nvmf_subsystem *spdk_nvmf_tgt_find_subsystem_by_id(struct spdk_nvmf_tgt *tgt,
+		uint32_t id);
+
 /**
  * Begin iterating over all known subsystems. If no subsystems are present, return NULL.
  *
