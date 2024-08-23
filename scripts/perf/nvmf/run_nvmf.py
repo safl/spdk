@@ -1446,6 +1446,13 @@ class KernelInitiator(Initiator):
                      if "SPDK" in x["ModelNumber"] or "Linux" in x["ModelNumber"]]
         return nvme_list
 
+    def get_connected_path_devices(self):
+        d = self.exec_cmd(["bash", "-c", "echo nvme*c*"], change_dir="/sys/block")
+        d = d.strip().split()
+        d.sort()
+
+        return d
+
     def init_connect(self):
         self.log.info("Below connection attempts may result in error messages, this is expected!")
         for subsystem in self.subsystem_info_list:
@@ -1466,17 +1473,25 @@ class KernelInitiator(Initiator):
                 "nomerges": "2"
             }
 
-            for disk in self.get_connected_nvme_list():
+            for disk in [*self.get_connected_nvme_list(), *self.get_connected_path_devices()]:
                 sysfs = os.path.join("/sys/block", disk, "queue")
                 for k, v in block_sysfs_settings.items():
                     sysfs_opt_path = os.path.join(sysfs, k)
                     try:
-                        self.exec_cmd(["sudo", "bash", "-c", "echo %s > %s" % (v, sysfs_opt_path)], stderr_redirect=True)
+                        # If the attribute is not there then it's likely due to changes in the kernel
+                        val = self.exec_cmd(
+                            [
+                                "sudo",
+                                "bash",
+                                "-c",
+                                "if [[ -e %s ]]; then echo %s > %s || exit 1; cat %s; fi"
+                                % (sysfs_opt_path, v, sysfs_opt_path, sysfs_opt_path),
+                            ],
+                            stderr_redirect=True,
+                        )
+                        self.log.info("%s=%s" % (sysfs_opt_path, val))
                     except CalledProcessError as e:
                         self.log.warning("Warning: command %s failed due to error %s. %s was not set!" % (e.cmd, e.output, v))
-                    finally:
-                        _ = self.exec_cmd(["sudo", "cat", "%s" % (sysfs_opt_path)])
-                        self.log.info("%s=%s" % (sysfs_opt_path, _))
 
     def init_disconnect(self):
         for subsystem in self.subsystem_info_list:
