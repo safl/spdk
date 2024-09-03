@@ -148,6 +148,15 @@ nvme_transport_ctrlr_scan_attached(struct spdk_nvme_probe_ctx *probe_ctx)
 }
 
 int
+nvme_transport_ctrlr_enable(struct spdk_nvme_ctrlr *ctrlr)
+{
+	const struct spdk_nvme_transport *transport = nvme_get_transport(ctrlr->trid.trstring);
+
+	assert(transport != NULL);
+	return transport->ops.ctrlr_enable(ctrlr);
+}
+
+int
 nvme_transport_ctrlr_destruct(struct spdk_nvme_ctrlr *ctrlr)
 {
 	const struct spdk_nvme_transport *transport = nvme_get_transport(ctrlr->trid.trstring);
@@ -157,12 +166,16 @@ nvme_transport_ctrlr_destruct(struct spdk_nvme_ctrlr *ctrlr)
 }
 
 int
-nvme_transport_ctrlr_enable(struct spdk_nvme_ctrlr *ctrlr)
+nvme_transport_ctrlr_enable_interrupts(struct spdk_nvme_ctrlr *ctrlr)
 {
 	const struct spdk_nvme_transport *transport = nvme_get_transport(ctrlr->trid.trstring);
 
 	assert(transport != NULL);
-	return transport->ops.ctrlr_enable(ctrlr);
+	if (transport->ops.ctrlr_enable_interrupts != NULL) {
+		return transport->ops.ctrlr_enable_interrupts(ctrlr);
+	}
+
+	return -ENOSYS;
 }
 
 int
