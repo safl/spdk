@@ -225,6 +225,166 @@ comp_read_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io, b
 	spdk_thread_exec_msg(comp_bdev->reduce_thread, _comp_submit_read, bdev_io);
 }
 
+#define NON_FULL_CHUNK_NR 2
+
+struct chunk_info {
+	uint64_t chunk_idx;
+	uint64_t block_offset;
+	uint64_t block_length;
+};
+struct compress_unmap_split_ctx {
+	struct spdk_bdev_io *bdev_io;
+	uint32_t logical_blocks_per_chunk;
+	uint64_t full_chunk_idx_b;
+	uint64_t full_chunk_idx_e;
+	uint32_t full_chunk_nr;
+	uint32_t full_chunk_consumed_nr;
+	uint64_t non_full_chunk_nr;
+	uint32_t non_full_chunk_consumed_nr;
+	struct chunk_info non_full_chunk_info[NON_FULL_CHUNK_NR];
+};
+
+/*
+ * This function processes the unmap operation for both full and partial chunks in a
+ * compressed block device. It iteratively submits unmap requests until all the chunks
+ * have been unmapped or an error occurs.
+ */
+static void
+_comp_submit_unmap_split(void *ctx, int32_t error)
+{
+	struct compress_unmap_split_ctx *split_ctx = ctx;
+	struct spdk_bdev_io *bdev_io = split_ctx->bdev_io;
+	struct vbdev_compress *comp_bdev = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_compress,
+					   comp_bdev);
+	struct chunk_info *non_full_chunk = NULL;
+	uint64_t chunk_idx = 0;
+	uint64_t block_offset = 0;
+	uint64_t block_length = 0;
+
+	if (error != 0 ||
+	    (split_ctx->full_chunk_consumed_nr == split_ctx->full_chunk_nr &&
+	     split_ctx->non_full_chunk_consumed_nr == split_ctx->non_full_chunk_nr)) {
+		reduce_rw_blocks_cb(bdev_io, error);
+		free(split_ctx);
+		return;
+	}
+
+	if (split_ctx->full_chunk_consumed_nr < split_ctx->full_chunk_nr) {
+		chunk_idx = split_ctx->full_chunk_idx_b + split_ctx->full_chunk_consumed_nr;
+		block_offset = chunk_idx * split_ctx->logical_blocks_per_chunk;
+		block_length = split_ctx->logical_blocks_per_chunk;
+
+		split_ctx->full_chunk_consumed_nr++;
+		spdk_reduce_vol_unmap(comp_bdev->vol,
+				      block_offset, block_length,
+				      _comp_submit_unmap_split, split_ctx);
+	} else if (split_ctx->non_full_chunk_consumed_nr < split_ctx->non_full_chunk_nr) {
+		non_full_chunk = &split_ctx->non_full_chunk_info[split_ctx->non_full_chunk_consumed_nr];
+		block_offset = non_full_chunk->chunk_idx * split_ctx->logical_blocks_per_chunk +
+			       non_full_chunk->block_offset;
+		block_length = non_full_chunk->block_length;
+
+		split_ctx->non_full_chunk_consumed_nr++;
+		spdk_reduce_vol_unmap(comp_bdev->vol,
+				      block_offset, block_length,
+				      _comp_submit_unmap_split, split_ctx);
+	} else {
+		assert(false);
+	}
+}
+
+/*
+ * This function splits the unmap operation into full and partial chunks based on the
+ * block range specified in the 'spdk_bdev_io' structure. It calculates the start and end
+ * chunks, as well as any partial chunks at the beginning or end of the range, and prepares
+ * a context (compress_unmap_split_ctx) to handle these chunks. The unmap operation is
+ * then submitted for processing through '_comp_submit_unmap_split'.
+ * some cases to handle:
+ * 1. start and end chunks are different
+ * 1.1 start and end chunks are full
+ * 1.2 start and end chunks are nonfull
+ * 1.3 start or  end chunk  is full and the other is nonfull
+ * 2. start and end chunks are the same
+ * 2.1 full
+ * 2.2 nonfull
+ */
+static void
+_comp_submit_unmap(void *ctx)
+{
+	struct spdk_bdev_io *bdev_io = ctx;
+	struct vbdev_compress *comp_bdev = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_compress,
+					   comp_bdev);
+	const struct spdk_reduce_vol_params *vol_params = spdk_reduce_vol_get_params(comp_bdev->vol);
+	struct compress_unmap_split_ctx *split_ctx;
+	struct chunk_info *non_full_chunk;
+	uint32_t logical_blocks_per_chunk;
+	uint64_t start_chunk, end_chunk, start_offset, end_tail;
+
+	logical_blocks_per_chunk = vol_params->chunk_size / vol_params->logical_block_size;
+	start_chunk = bdev_io->u.bdev.offset_blocks / logical_blocks_per_chunk;
+	end_chunk = (bdev_io->u.bdev.offset_blocks + bdev_io->u.bdev.num_blocks - 1) /
+		    logical_blocks_per_chunk;
+	start_offset = bdev_io->u.bdev.offset_blocks % logical_blocks_per_chunk;
+	end_tail = (bdev_io->u.bdev.offset_blocks + bdev_io->u.bdev.num_blocks) %
+		   logical_blocks_per_chunk;
+
+	split_ctx = calloc(1, sizeof(struct compress_unmap_split_ctx));
+	if (split_ctx == NULL) {
+		reduce_rw_blocks_cb(bdev_io, -ENOMEM);
+		return;
+	}
+	non_full_chunk = split_ctx->non_full_chunk_info;
+	split_ctx->bdev_io = bdev_io;
+	split_ctx->logical_blocks_per_chunk = logical_blocks_per_chunk;
+
+	if (start_chunk < end_chunk) {
+		if (start_offset != 0) {
+			non_full_chunk[split_ctx->non_full_chunk_nr].chunk_idx = start_chunk;
+			non_full_chunk[split_ctx->non_full_chunk_nr].block_offset = start_offset;
+			non_full_chunk[split_ctx->non_full_chunk_nr].block_length = logical_blocks_per_chunk
+					- start_offset;
+			split_ctx->non_full_chunk_nr++;
+			split_ctx->full_chunk_idx_b = start_chunk + 1;
+		} else {
+			split_ctx->full_chunk_idx_b = start_chunk;
+		}
+
+		if (end_tail != 0) {
+			non_full_chunk[split_ctx->non_full_chunk_nr].chunk_idx = end_chunk;
+			non_full_chunk[split_ctx->non_full_chunk_nr].block_offset = 0;
+			non_full_chunk[split_ctx->non_full_chunk_nr].block_length = end_tail;
+			split_ctx->non_full_chunk_nr++;
+			split_ctx->full_chunk_idx_e = end_chunk - 1;
+		} else {
+			split_ctx->full_chunk_idx_e = end_chunk;
+		}
+
+		split_ctx->full_chunk_nr = end_chunk - start_chunk + 1 - split_ctx->non_full_chunk_nr;
+
+		if (split_ctx->full_chunk_nr) {
+			assert(split_ctx->full_chunk_idx_b != UINT64_MAX && split_ctx->full_chunk_idx_e != UINT64_MAX);
+			assert(split_ctx->full_chunk_idx_e - split_ctx->full_chunk_idx_b + 1 == split_ctx->full_chunk_nr);
+		} else {
+			assert(split_ctx->full_chunk_idx_b - split_ctx->full_chunk_idx_e == 1);
+		}
+	} else {
+		if (start_offset != 0 || end_tail != 0) {
+			non_full_chunk[0].chunk_idx = start_chunk;
+			non_full_chunk[0].block_offset = start_offset;
+			non_full_chunk[0].block_length =
+				bdev_io->u.bdev.num_blocks;
+			split_ctx->non_full_chunk_nr = 1;
+		} else {
+			split_ctx->full_chunk_idx_b = start_chunk;
+			split_ctx->full_chunk_idx_e = end_chunk;
+			split_ctx->full_chunk_nr = 1;
+		}
+	}
+	assert(split_ctx->non_full_chunk_nr <= SPDK_COUNTOF(split_ctx->non_full_chunk_info));
+
+	_comp_submit_unmap_split(split_ctx, 0);
+}
+
 /* Called when someone above submits IO to this vbdev. */
 static void
 vbdev_compress_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
@@ -247,10 +407,12 @@ vbdev_compress_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *b
 	case SPDK_BDEV_IO_TYPE_WRITE:
 		spdk_thread_exec_msg(comp_bdev->reduce_thread, _comp_submit_write, bdev_io);
 		return;
+	case SPDK_BDEV_IO_TYPE_UNMAP:
+		spdk_thread_exec_msg(comp_bdev->reduce_thread, _comp_submit_unmap, bdev_io);
+		return;
 	/* TODO support RESET in future patch in the series */
 	case SPDK_BDEV_IO_TYPE_RESET:
 	case SPDK_BDEV_IO_TYPE_WRITE_ZEROES:
-	case SPDK_BDEV_IO_TYPE_UNMAP:
 	case SPDK_BDEV_IO_TYPE_FLUSH:
 	default:
 		SPDK_ERRLOG("Unknown I/O type %d\n", bdev_io->type);
@@ -269,6 +431,7 @@ vbdev_compress_io_type_supported(void *ctx, enum spdk_bdev_io_type io_type)
 	case SPDK_BDEV_IO_TYPE_WRITE:
 		return spdk_bdev_io_type_supported(comp_bdev->base_bdev, io_type);
 	case SPDK_BDEV_IO_TYPE_UNMAP:
+		return true;
 	case SPDK_BDEV_IO_TYPE_RESET:
 	case SPDK_BDEV_IO_TYPE_FLUSH:
 	case SPDK_BDEV_IO_TYPE_WRITE_ZEROES:
