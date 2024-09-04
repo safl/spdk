@@ -37,7 +37,7 @@ DEPDIRS-conf := log util
 DEPDIRS-json := log util
 DEPDIRS-rdma_provider := log util
 DEPDIRS-rdma_utils := dma log util
-DEPDIRS-reduce := log util
+DEPDIRS-reduce := log util thread
 DEPDIRS-thread := log util trace
 DEPDIRS-keyring := log util $(JSON_LIBS)
 
