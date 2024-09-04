@@ -47,6 +47,14 @@ spdk_reduce_vol_readv(struct spdk_reduce_vol *vol, struct iovec *iov, int iovcnt
 	cb_fn(cb_arg, ut_spdk_reduce_vol_op_complete_err);
 }
 
+void
+spdk_reduce_vol_unmap(struct spdk_reduce_vol *vol,
+		      uint64_t offset, uint64_t length, spdk_reduce_vol_op_complete cb_fn,
+		      void *cb_arg)
+{
+	cb_fn(cb_arg, ut_spdk_reduce_vol_op_complete_err);
+}
+
 #include "bdev/compress/vbdev_compress.c"
 
 /* SPDK stubs */
@@ -331,7 +339,7 @@ test_supported_io(void)
 	g_comp_base_support_rw = false;
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_READ) == false);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_WRITE) == false);
-	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_UNMAP) == false);
+	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_UNMAP) == true);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_RESET) == false);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_FLUSH) == false);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_WRITE_ZEROES) == false);
@@ -339,7 +347,7 @@ test_supported_io(void)
 	g_comp_base_support_rw = true;
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_READ) == true);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_WRITE) == true);
-	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_UNMAP) == false);
+	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_UNMAP) == true);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_RESET) == false);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_FLUSH) == false);
 	CU_ASSERT(vbdev_compress_io_type_supported(&g_comp_bdev, SPDK_BDEV_IO_TYPE_WRITE_ZEROES) == false);
