@@ -78,6 +78,18 @@ function run_bdevperf() {
 	killprocess $bdevperf_pid
 }
 
+function run_unmap_bdevperf() {
+	$rootdir/build/examples/bdevperf -z -q $1 -o $2 -w unmap -t $3 -C -m 0x6 &
+	bdevperf_pid=$!
+	trap 'killprocess $bdevperf_pid; error_cleanup; exit 1' SIGINT SIGTERM EXIT
+	waitforlisten $bdevperf_pid
+	create_vols $4
+	$rootdir/examples/bdev/bdevperf/bdevperf.py perform_tests
+	destroy_vols
+	trap - SIGINT SIGTERM EXIT
+	killprocess $bdevperf_pid
+}
+
 mkdir -p /tmp/pmem
 test_type=$1
 
@@ -87,6 +99,11 @@ run_bdevperf 32 4096 3
 run_bdevperf 32 4096 3 512
 run_bdevperf 32 4096 3 4096
 run_bdevio
+
+UNMAP_UNALIGN_SIZE=$((37*1024))
+UNMAP_ALIGN_SIZE=$((4*1024))
+run_unmap_bdevperf 32 $UNMAP_UNALIGN_SIZE 3 512
+run_unmap_bdevperf 32 $UNMAP_ALIGN_SIZE 3 512
 
 if [ $RUN_NIGHTLY -eq 1 ]; then
 	run_bdevperf 64 16384 30
