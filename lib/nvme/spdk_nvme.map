@@ -193,6 +193,7 @@
 	spdk_nvme_qpair_get_num_outstanding_reqs;
 	spdk_nvme_qpair_set_abort_dnr;
 	spdk_nvme_qpair_is_connected;
+	spdk_nvme_qpair_get_ctrlr;
 
 	spdk_nvme_print_command;
 	spdk_nvme_print_completion;

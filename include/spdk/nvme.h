@@ -2037,6 +2037,15 @@ void spdk_nvme_qpair_set_abort_dnr(struct spdk_nvme_qpair *qpair, bool dnr);
 bool spdk_nvme_qpair_is_connected(struct spdk_nvme_qpair *qpair);
 
 /**
+ * Get the controller with which this qpair is associated.
+ *
+ * \param qpair The qpair to query.
+ *
+ * \return a pointer to the controller.
+ */
+struct spdk_nvme_ctrlr *spdk_nvme_qpair_get_ctrlr(struct spdk_nvme_qpair *qpair);
+
+/**
  * Send the given admin command to the NVMe controller.
  *
  * This is a low level interface for submitting admin commands directly. Prefer
