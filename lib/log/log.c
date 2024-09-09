@@ -17,7 +17,12 @@ static const char *const spdk_level_names[] = {
 
 #define MAX_TMPBUF 1024
 
-static logfunc *g_log = NULL;
+static spdk_log_func *g_log = NULL;
+static struct spdk_log_func_opts g_log_opts = {
+	.openf = NULL,
+	.closef = NULL,
+	.user_ctx = NULL,
+};
 static bool g_log_timestamps = true;
 
 enum spdk_log_level g_spdk_log_level;
@@ -49,21 +54,63 @@ spdk_log_get_print_level(void) {
 	return g_spdk_log_print_level;
 }
 
+static void
+log_open(void *ctx)
+{
+	openlog("spdk", LOG_PID, LOG_LOCAL7);
+}
+
+static void
+log_close(void *ctx)
+{
+	closelog();
+}
+
 void
-spdk_log_open(logfunc *logf)
+spdk_log_open(spdk_log_func *logf)
 {
 	if (logf) {
-		g_log = logf;
+		spdk_log_open_ext(logf, NULL);
 	} else {
-		openlog("spdk", LOG_PID, LOG_LOCAL7);
+		struct spdk_log_func_opts default_opts = {.openf = log_open, .closef = log_close, .user_ctx = NULL};
+		spdk_log_open_ext(NULL, &default_opts);
+	}
+}
+
+void
+spdk_log_open_ext(spdk_log_func *logf, struct spdk_log_func_opts *opts)
+{
+	g_log = logf;
+
+	if (!opts) {
+		return;
+	}
+
+#define SET_FIELD(field) \
+        if (offsetof(struct spdk_log_func_opts, field) + sizeof(opts->field) <= opts->opts_size) { \
+                g_log_opts.field = opts->field; \
+        } else { \
+				g_log_opts.field = NULL; \
+		} \
+
+	SET_FIELD(openf);
+	SET_FIELD(closef);
+	SET_FIELD(user_ctx);
+
+	g_log_opts.opts_size = opts->opts_size;
+
+#undef SET_FIELD
+
+	if (g_log_opts.openf) {
+		g_log_opts.openf(g_log_opts.user_ctx);
 	}
 }
 
 void
 spdk_log_close(void)
 {
-	if (!g_log) {
-		closelog();
+	if (g_log_opts.closef) {
+		g_log_opts.closef(g_log_opts.user_ctx);
 	}
 }
 
