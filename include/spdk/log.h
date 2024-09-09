@@ -12,6 +12,7 @@
 #ifndef SPDK_LOG_H
 #define SPDK_LOG_H
 
+#include "spdk/assert.h"
 #include "spdk/stdinc.h"
 #include "spdk/queue.h"
 
@@ -29,14 +30,51 @@ extern "C" {
  * \param format Format string to the message.
  * \param args Additional arguments for format string.
  */
-typedef void logfunc(int level, const char *file, const int line,
-		     const char *func, const char *format, va_list args);
+typedef void spdk_log_func(int level, const char *file, const int line,
+			   const char *func, const char *format, va_list args);
+
+/**
+ * for opening user-provided logger
+ *
+ * \param ctx User-defined context for log open/close
+ */
+typedef void spdk_log_open_func(void *ctx);
+
+/**
+ * for closing user-provided logger
+ *
+ * \param ctx User-defined context for log open/close
+ */
+typedef void spdk_log_close_func(void *ctx);
+
+struct spdk_log_func_opts {
+	/**
+	 * The size of spdk_log_func_opts according to the caller of this library is used for ABI
+	 * compatibility.  The library uses this field to know how many fields in this
+	 * structure are valid. And the library will populate any remaining fields with default values.
+	 * New added fields should be put at the end of the struct.
+	 */
+	size_t opts_size;
+	spdk_log_open_func *openf;
+	spdk_log_close_func *closef;
+	void *user_ctx;
+} __attribute__((packed));
+SPDK_STATIC_ASSERT(sizeof(struct spdk_log_func_opts) == 32, "Incorrect size");
 
 /**
  * Initialize the logging module. Messages prior
  * to this call will be dropped.
  */
-void spdk_log_open(logfunc *logf);
+void spdk_log_open(spdk_log_func *logf);
+
+/**
+ * Extended API to initialize the logging module. Messages prior
+ * to this call will be dropped.
+ *
+ * \param logf User-provided log call
+ * \param opts Extended options to provide log open/close functions with user-defined context
+ */
+void spdk_log_open_ext(spdk_log_func *logf, struct spdk_log_func_opts *opts);
 
 /**
  * Close the currently active log. Messages after this call
