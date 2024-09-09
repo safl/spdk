@@ -18,6 +18,8 @@ static const char *const spdk_level_names[] = {
 #define MAX_TMPBUF 1024
 
 static logfunc *g_log = NULL;
+static logclosefunc *g_closelog = NULL;
+static void *g_logctx = NULL;
 static bool g_log_timestamps = true;
 
 enum spdk_log_level g_spdk_log_level;
@@ -49,21 +51,44 @@ spdk_log_get_print_level(void) {
 	return g_spdk_log_print_level;
 }
 
+static void
+log_open(void *ctx)
+{
+	openlog("spdk", LOG_PID, LOG_LOCAL7);
+}
+
+static void
+log_close(void *ctx)
+{
+	closelog();
+}
+
 void
 spdk_log_open(logfunc *logf)
 {
 	if (logf) {
-		g_log = logf;
+		spdk_log_open_ext(logf, NULL, NULL, NULL);
 	} else {
-		openlog("spdk", LOG_PID, LOG_LOCAL7);
+		spdk_log_open_ext(NULL, log_open, log_close, NULL);
 	}
+}
+
+void
+spdk_log_open_ext(logfunc *logf, logopenfunc *openf, logclosefunc *closef, void *ctx)
+{
+	if (openf) {
+		openf(ctx);
+	}
+	g_log = logf;
+	g_closelog = closef;
+	g_logctx = ctx;
 }
 
 void
 spdk_log_close(void)
 {
-	if (!g_log) {
-		closelog();
+	if (g_closelog) {
+		g_closelog(g_logctx);
 	}
 }
 

@@ -33,10 +33,31 @@ typedef void logfunc(int level, const char *file, const int line,
 		     const char *func, const char *format, va_list args);
 
 /**
+ * for opening user-provided logger
+ *
+ * \param ctx User-defined context for log open/close
+ */
+typedef void logopenfunc(void *ctx);
+
+/**
+ * for closing user-provided logger
+ *
+ * \param ctx User-defined context for log open/close
+ */
+typedef void logclosefunc(void *ctx);
+
+/**
  * Initialize the logging module. Messages prior
  * to this call will be dropped.
  */
 void spdk_log_open(logfunc *logf);
+
+/**
+ * Extended API to initialize the logging module. Messages prior
+ * to this call will be dropped. In addition to default API,
+ * user can specify functions to be called on log opening and closing.
+ */
+void spdk_log_open_ext(logfunc *logf, logopenfunc *openf, logclosefunc *closef, void *ctx);
 
 /**
  * Close the currently active log. Messages after this call
