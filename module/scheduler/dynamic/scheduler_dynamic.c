@@ -335,12 +335,14 @@ balance(struct spdk_scheduler_core_info *cores_info, uint32_t cores_count)
 	SPDK_DTRACE_PROBE1(dynsched_balance, cores_count);
 
 	SPDK_ENV_FOREACH_CORE(i) {
+		reactor = spdk_reactor_get(i);
 		g_cores[i].thread_count = cores_info[i].threads_count;
 		g_cores[i].busy = cores_info[i].current_busy_tsc;
 		g_cores[i].idle = cores_info[i].current_idle_tsc;
 		g_cores[i].isolated = cores_info[i].isolated;
 		SPDK_DTRACE_PROBE2(dynsched_core_info, i, &cores_info[i]);
 	}
+
 	main_core = &g_cores[g_main_lcore];
 
 	/* Distribute threads in two passes, to make sure updated core stats are considered on each pass.
