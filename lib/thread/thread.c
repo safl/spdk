@@ -152,6 +152,10 @@ struct spdk_thread {
 	bool				poller_unregistered;
 	struct spdk_fd_group		*fgrp;
 
+	uint16_t					trace_id;
+
+	uint8_t						reserved[6];
+
 	/* User context allocated at the end */
 	uint8_t				ctx[0];
 };
@@ -548,6 +552,8 @@ spdk_thread_create(const char *name, const struct spdk_cpuset *cpumask)
 	} else {
 		snprintf(thread->name, sizeof(thread->name), "%p", thread);
 	}
+
+	thread->trace_id = spdk_trace_register_owner(OWNER_TYPE_THREAD, thread->name);
 
 	pthread_mutex_lock(&g_devlist_mutex);
 	if (g_thread_id == 0) {
@@ -1979,6 +1985,12 @@ struct spdk_io_channel *
 spdk_thread_get_next_io_channel(struct spdk_io_channel *prev)
 {
 	return RB_NEXT(io_channel_tree, &thread->io_channels, prev);
+}
+
+uint16_t
+spdk_thread_get_trace_id(struct spdk_thread *thread)
+{
+	return thread->trace_id;
 }
 
 struct call_thread {
