@@ -28,7 +28,10 @@ run_test "nvmf_fio_target" $rootdir/test/nvmf/target/fio.sh "${TEST_ARGS[@]}"
 run_test "nvmf_bdevio" $rootdir/test/nvmf/target/bdevio.sh "${TEST_ARGS[@]}"
 
 if [[ "$SPDK_TEST_NVMF_TRANSPORT" == "tcp" ]]; then
-	run_test "nvmf_target_multipath" "$rootdir/test/nvmf/target/multipath.sh" "${TEST_ARGS[@]}"
+	# Pinning to virtual setups since these tests depend on multiple target interfaces being around.
+	if [[ $NET_TYPE != phy ]]; then
+		run_test "nvmf_target_multipath" "$rootdir/test/nvmf/target/multipath.sh" "${TEST_ARGS[@]}"
+	fi
 	run_test "nvmf_zcopy" "$rootdir/test/nvmf/target/zcopy.sh" "${TEST_ARGS[@]}"
 fi
 

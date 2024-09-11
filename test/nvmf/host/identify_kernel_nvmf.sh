@@ -12,7 +12,7 @@ nvmftestinit
 
 trap 'nvmftestfini || :; clean_kernel_target' EXIT
 
-target_ip=$(get_main_ns_ip)
+target_ip=$NVMF_FIRST_INITIATOR_IP
 configure_kernel_target "$NVME_SUBNQN" "$target_ip"
 
 "$SPDK_BIN_DIR/spdk_nvme_identify" -r "\

@@ -43,11 +43,20 @@ reset_setup_interfaces() { _dev=0 dev_map=(); }
 setup_interface_pair() {
 	local id=$1 type=$2 ip=$3 transport=$4 ips=()
 	local initiator=initiator${id} target=target${id} _ns=""
+	local key_initiator=initiator$id key_target=target$id
 
 	# initiator + target
 	ips=("$ip" $((++ip)))
 
 	[[ $transport == tcp ]] && _ns=NVMF_TARGET_NS_CMD
+
+	if [[ $transport == rdma ]]; then
+		# rdma tests are based on infiniband, hence there's no logical split between "initiator"
+		# and the "target" which are separated by an extra namespace. To get rid of the
+		# ambiguity that comes with legacy $NVMF_SECOND_TARGET_IP we need to treat all
+		# devs as targets here.
+		key_initiator=target$((id + 1))
+	fi
 
 	if [[ $type == phy ]]; then
 		# This dependency comes from gather_supported_nvmf_pci_devs(). Caller should
@@ -73,7 +82,7 @@ setup_interface_pair() {
 		ipts -I INPUT 1 -i "$initiator" -p tcp --dport $NVMF_PORT -j ACCEPT
 	fi
 
-	dev_map["initiator$id"]=$initiator dev_map["target$id"]=$target
+	dev_map["$key_initiator"]=$initiator dev_map["$key_target"]=$target
 }
 
 ping_ip() {
@@ -87,8 +96,8 @@ ping_ips() {
 	local pairs=$1 pair
 
 	for ((pair = 0; pair < pairs; pair++)); do
-		ping_ip "$(get_initiator_ip_address "initiator${pair}")" NVMF_TARGET_NS_CMD
-		ping_ip "$(get_target_ip_address "target${pair}" NVMF_TARGET_NS_CMD)"
+		ping_ip "$("get_${TEST_TRANSPORT}_initiator_ip_address" "$pair")" NVMF_TARGET_NS_CMD
+		ping_ip "$("get_${TEST_TRANSPORT}_target_ip_address" "$pair" NVMF_TARGET_NS_CMD)"
 	done
 }
 
@@ -167,11 +176,11 @@ get_ip_address() {
 }
 
 get_target_ip_address() {
-	get_ip_address "${1:-target0}" "$2"
+	get_ip_address "target${1:-0}" "$2"
 }
 
 get_initiator_ip_address() {
-	get_ip_address "${1:-initiator0}"
+	get_ip_address "initiator${1:-0}"
 }
 
 get_tcp_initiator_ip_address() {
@@ -179,7 +188,8 @@ get_tcp_initiator_ip_address() {
 }
 
 get_rdma_initiator_ip_address() {
-	get_initiator_ip_address "$1"
+	# See setup_interface_pair() take on rdma
+	get_rdma_target_ip_address "$1"
 }
 
 get_tcp_target_ip_address() {
@@ -321,19 +331,9 @@ nvmf_legacy_env() {
 	NVMF_TARGET_INTERFACE=${dev_map[target0]}
 	NVMF_TARGET_INTERFACE2=${dev_map[target1]}
 
-	NVMF_FIRST_INITIATOR_IP=$(get_initiator_ip_address)
-	NVMF_SECOND_INITIATOR_IP=$(get_initiator_ip_address initiator1)
+	NVMF_FIRST_INITIATOR_IP=$("get_${TEST_TRANSPORT}_initiator_ip_address")
+	NVMF_SECOND_INITIATOR_IP=$("get_${TEST_TRANSPORT}_initiator_ip_address" 1)
 
-	# *TARGET_IP is being used differently depending on the transport - for
-	# tcp, all target interfaces are always part of a separate namespace while
-	# for rdma they are kept in the main namespace. As per above, this should
-	# be reviewed per test-case and changed accordingly.
 	NVMF_FIRST_TARGET_IP=$("get_${TEST_TRANSPORT}_target_ip_address")
-	NVMF_SECOND_TARGET_IP=$("get_${TEST_TRANSPORT}_target_ip_address" target1)
-	# See target_disconnect.sh or multipath.sh wonkiness - rdma MUST have
-	# the NVMF_SECOND_TARGET_IP in place, but tcp, under phy CANNOT (CI's
-	# limitation).
-	if [[ $TEST_TRANSPORT == rdma ]]; then
-		NVMF_SECOND_TARGET_IP=${NVMF_SECOND_TARGET_IP:-$NVMF_FIRST_INITIATOR_IP}
-	fi
+	NVMF_SECOND_TARGET_IP=$("get_${TEST_TRANSPORT}_target_ip_address" 1)
 }
