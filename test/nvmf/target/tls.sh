@@ -63,11 +63,6 @@ setup_nvmf_tgt() {
 nvmftestinit
 nvmfappstart -m 0x2 --wait-for-rpc
 
-if [ "$TEST_TRANSPORT" != tcp ]; then
-	echo "Unsupported transport: $TEST_TRANSPORT"
-	exit 0
-fi
-
 $rpc_py sock_set_default_impl -i ssl
 
 # Check default TLS version

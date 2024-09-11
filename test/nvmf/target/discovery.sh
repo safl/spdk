@@ -12,11 +12,6 @@ NULL_BDEV_SIZE=102400
 NULL_BLOCK_SIZE=512
 NVMF_PORT_REFERRAL=4430
 
-if ! hash nvme; then
-	echo "nvme command not found; skipping discovery test"
-	exit 0
-fi
-
 nvmftestinit
 nvmfappstart -m 0xF
 

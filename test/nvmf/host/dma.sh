@@ -9,10 +9,6 @@ rootdir=$(readlink -f $testdir/../../..)
 source $rootdir/test/common/autotest_common.sh
 source $rootdir/test/nvmf/common.sh
 
-if [ "$TEST_TRANSPORT" != "rdma" ]; then
-	exit 0
-fi
-
 MALLOC_BDEV_SIZE=256
 MALLOC_BLOCK_SIZE=512
 subsystem="0"

@@ -48,12 +48,6 @@ if [ -z $NVMF_SECOND_TARGET_IP ]; then
 	exit 0
 fi
 
-if [ "$TEST_TRANSPORT" != "tcp" ]; then
-	echo "run this test only with TCP transport for now"
-	nvmftestfini
-	exit 0
-fi
-
 nvmfappstart -m 0xF
 
 $rpc_py nvmf_create_transport $NVMF_TRANSPORT_OPTS -u 8192

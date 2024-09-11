@@ -15,11 +15,6 @@ NVMF_HOST_SECOND_PORT="60001"
 
 bdevperf_rpc_sock=/var/tmp/bdevperf.sock
 
-if [ "$TEST_TRANSPORT" == "rdma" ]; then
-	echo "Skipping tests on RDMA because the rdma stack fails to configure the same IP for host and target."
-	exit 0
-fi
-
 nvmftestinit
 
 nvmfappstart -m 0xE
