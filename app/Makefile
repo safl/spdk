@@ -16,6 +16,7 @@ DIRS-y += spdk_lspci
 DIRS-y += spdk_nvme_perf
 DIRS-y += spdk_nvme_identify
 DIRS-y += spdk_nvme_discover
+DIRS-y += spdk_nvmf_initiator
 ifneq ($(OS),Windows)
 # TODO - currently disabled on Windows due to lack of support for curses
 DIRS-y += spdk_top
