@@ -42,12 +42,6 @@ get_subsystem() {
 
 nvmftestinit
 
-if [ -z $NVMF_SECOND_TARGET_IP ]; then
-	echo "only one NIC for nvmf test"
-	nvmftestfini
-	exit 0
-fi
-
 nvmfappstart -m 0xF
 
 $rpc_py nvmf_create_transport $NVMF_TRANSPORT_OPTS -u 8192

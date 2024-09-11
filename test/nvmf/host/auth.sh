@@ -32,7 +32,7 @@ cleanup() {
 }
 
 nvmet_auth_init() {
-	configure_kernel_target "$subnqn" "$(get_main_ns_ip)"
+	configure_kernel_target "$subnqn" "$NVMF_FIRST_INITIATOR_IP"
 	mkdir "$nvmet_host"
 	echo 0 > "$nvmet_subsys/attr_allow_any_host"
 	ln -s "$nvmet_host" "$nvmet_subsys/allowed_hosts/$hostnqn"
@@ -59,7 +59,7 @@ connect_authenticate() {
 
 	rpc_cmd bdev_nvme_set_options --dhchap-digests "$digest" --dhchap-dhgroups "$dhgroup"
 	rpc_cmd bdev_nvme_attach_controller -b nvme0 -t "$TEST_TRANSPORT" -f ipv4 \
-		-a "$(get_main_ns_ip)" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
+		-a "$NVMF_FIRST_INITIATOR_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
 		--dhchap-key "key${keyid}" "${ckey[@]}"
 	[[ $(rpc_cmd bdev_nvme_get_controllers | jq -r '.[].name') == "nvme0" ]]
 	rpc_cmd bdev_nvme_detach_controller nvme0
@@ -110,23 +110,23 @@ done
 nvmet_auth_set_key "sha256" "ffdhe2048" 1
 rpc_cmd bdev_nvme_set_options --dhchap-digests "sha256" --dhchap-dhgroups "ffdhe2048"
 NOT rpc_cmd bdev_nvme_attach_controller -b nvme0 -t "$TEST_TRANSPORT" -f ipv4 \
-	-a "$(get_main_ns_ip)" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn"
+	-a "$NVMF_FIRST_INITIATOR_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn"
 (($(rpc_cmd bdev_nvme_get_controllers | jq 'length') == 0))
 
 # Check that mismatched keys result in failed attach
 NOT rpc_cmd bdev_nvme_attach_controller -b nvme0 -t "$TEST_TRANSPORT" -f ipv4 \
-	-a "$(get_main_ns_ip)" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
+	-a "$NVMF_FIRST_INITIATOR_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
 	--dhchap-key "key2"
 (($(rpc_cmd bdev_nvme_get_controllers | jq 'length') == 0))
 
 # Check that a failed controller authentication results in failed attach
 NOT rpc_cmd bdev_nvme_attach_controller -b nvme0 -t "$TEST_TRANSPORT" -f ipv4 \
-	-a "$(get_main_ns_ip)" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
+	-a "$NVMF_FIRST_INITIATOR_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
 	--dhchap-key "key1" --dhchap-ctrlr-key "ckey2"
 
 # Check reauthentication
 rpc_cmd bdev_nvme_attach_controller -b nvme0 -t "$TEST_TRANSPORT" -f ipv4 \
-	-a "$(get_main_ns_ip)" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
+	-a "$NVMF_FIRST_INITIATOR_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
 	--dhchap-key "key1" --dhchap-ctrlr-key "ckey1" --ctrlr-loss-timeout-sec 1 \
 	--reconnect-delay-sec 1
 nvmet_auth_set_key "sha256" "ffdhe2048" 2
@@ -140,7 +140,7 @@ done
 # Do the same, but this time try with a valid host key, but bad ctrlr key
 nvmet_auth_set_key "sha256" "ffdhe2048" 1
 rpc_cmd bdev_nvme_attach_controller -b nvme0 -t "$TEST_TRANSPORT" -f ipv4 \
-	-a "$(get_main_ns_ip)" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
+	-a "$NVMF_FIRST_INITIATOR_IP" -s "$NVMF_PORT" -q "$hostnqn" -n "$subnqn" \
 	--dhchap-key "key1" --dhchap-ctrlr-key "ckey1" --ctrlr-loss-timeout-sec 1 \
 	--reconnect-delay-sec 1
 nvmet_auth_set_key "sha256" "ffdhe2048" 2

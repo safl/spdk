@@ -530,12 +530,6 @@ gen_dhchap_key() {
 	echo "$file"
 }
 
-get_main_ns_ip() {
-	# FIXME: Rename, or drop this altogether in favor of each test fetching
-	# proper set of IP(s) whenever needed.
-	get_initiator_ip_address
-}
-
 uuid2nguid() {
 	tr -d - <<< "${1^^}"
 }
