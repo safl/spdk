@@ -63,7 +63,7 @@ spdk_target() {
 
 kernel_target() {
 	configure_kernel_target "$NVME_SUBNQN" "$(get_main_ns_ip)"
-	rabort "$TEST_TRANSPORT" IPv4 "$NVMF_INITIATOR_IP" "$NVMF_PORT" "$NVME_SUBNQN"
+	rabort "$TEST_TRANSPORT" IPv4 "$NVMF_FIRST_INITIATOR_IP" "$NVMF_PORT" "$NVME_SUBNQN"
 	clean_kernel_target
 }
 

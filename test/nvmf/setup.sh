@@ -323,8 +323,6 @@ nvmf_legacy_env() {
 
 	NVMF_FIRST_INITIATOR_IP=$(get_initiator_ip_address)
 	NVMF_SECOND_INITIATOR_IP=$(get_initiator_ip_address initiator1)
-	# There's a mixup in tests - some use either of these vars.
-	NVMF_INITIATOR_IP=$NVMF_FIRST_INITIATOR_IP
 
 	# *TARGET_IP is being used differently depending on the transport - for
 	# tcp, all target interfaces are always part of a separate namespace while
@@ -336,7 +334,7 @@ nvmf_legacy_env() {
 	# the NVMF_SECOND_TARGET_IP in place, but tcp, under phy CANNOT (CI's
 	# limitation).
 	if [[ $TEST_TRANSPORT == rdma ]]; then
-		NVMF_SECOND_TARGET_IP=${NVMF_SECOND_TARGET_IP:-$NVMF_INITIATOR_IP}
+		NVMF_SECOND_TARGET_IP=${NVMF_SECOND_TARGET_IP:-$NVMF_FIRST_INITIATOR_IP}
 	fi
 
 	# Some tests use this var regardless of the *_IP availability.
