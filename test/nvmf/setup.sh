@@ -336,7 +336,4 @@ nvmf_legacy_env() {
 	if [[ $TEST_TRANSPORT == rdma ]]; then
 		NVMF_SECOND_TARGET_IP=${NVMF_SECOND_TARGET_IP:-$NVMF_FIRST_INITIATOR_IP}
 	fi
-
-	# Some tests use this var regardless of the *_IP availability.
-	RDMA_IP_LIST=${NVMF_FIRST_TARGET_IP}$'\n'${NMVF_SECOND_TARGET_IP}
 }
