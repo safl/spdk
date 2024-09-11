@@ -301,10 +301,6 @@ function test_bonding_slaves_on_nics() {
 
 function test_bond_slaves() {
 	check_env_for_test_bonding_slaves
-	if [[ -z "$target_nics" ]]; then
-		echo "No available nic ports to run this test."
-		exit 0
-	fi
 	test_bonding_slaves_on_nics "${target_nics[@]}"
 }
 

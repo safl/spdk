@@ -12,11 +12,6 @@ source $rootdir/test/nvmf/common.sh
 nvmftestinit
 nvmfappstart -m 0x2
 
-if [ "$TEST_TRANSPORT" != tcp ]; then
-	echo "Unsupported transport: $TEST_TRANSPORT"
-	exit 0
-fi
-
 # Enable zero-copy and set in-capsule data size to zero to make sure all requests are using
 # zero-copy
 $rpc_py nvmf_create_transport $NVMF_TRANSPORT_OPTS -c 0 --zcopy
