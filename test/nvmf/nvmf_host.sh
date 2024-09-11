@@ -25,6 +25,8 @@ run_test "nvmf_host_multipath_status" $rootdir/test/nvmf/host/multipath_status.s
 run_test "nvmf_discovery_remove_ifc" $rootdir/test/nvmf/host/discovery_remove_ifc.sh "${TEST_ARGS[@]}"
 run_test "nvmf_identify_kernel_target" "$rootdir/test/nvmf/host/identify_kernel_nvmf.sh" "${TEST_ARGS[@]}"
 run_test "nvmf_auth_host" "$rootdir/test/nvmf/host/auth.sh" "${TEST_ARGS[@]}"
+run_test "nvmf_bdevperf" "$rootdir/test/nvmf/host/bdevperf.sh" "${TEST_ARGS[@]}"
+run_test "nvmf_target_disconnect" "$rootdir/test/nvmf/host/target_disconnect.sh" "${TEST_ARGS[@]}"
 
 if [[ "$SPDK_TEST_NVMF_TRANSPORT" == "tcp" ]]; then
 	run_test "nvmf_digest" "$rootdir/test/nvmf/host/digest.sh" "${TEST_ARGS[@]}"
@@ -45,11 +47,6 @@ fi
 if [[ $SPDK_TEST_USDT -eq 1 ]]; then
 	run_test "nvmf_host_multipath" $rootdir/test/nvmf/host/multipath.sh "${TEST_ARGS[@]}"
 	run_test "nvmf_timeout" $rootdir/test/nvmf/host/timeout.sh "${TEST_ARGS[@]}"
-fi
-
-if [[ $NET_TYPE == phy ]]; then
-	run_test "nvmf_bdevperf" $rootdir/test/nvmf/host/bdevperf.sh "${TEST_ARGS[@]}"
-	run_test "nvmf_target_disconnect" $rootdir/test/nvmf/host/target_disconnect.sh "${TEST_ARGS[@]}"
 fi
 
 trap - SIGINT SIGTERM EXIT
