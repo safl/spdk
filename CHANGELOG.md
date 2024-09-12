@@ -8,6 +8,11 @@ The APIs to handle PCI device interrupts have been modified as such:
 `spdk_pci_device_enable_interrupt` also requires number of eventfds to be created.
 `spdk_pci_device_get_interrupt_efd` requires an index to be passed, which is basically the queue id.
 
+### nvme
+
+Added `enable_interrupt` field to `spdk_nvme_ctrlr_opts` struct in order to enable interrupts.
+This is applicable for PCIE transport only.
+
 ## v24.09: (Upcoming Release)
 
 ### nvmf

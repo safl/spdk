@@ -1031,11 +1031,29 @@ nvme_pcie_ctrlr_destruct(struct spdk_nvme_ctrlr *ctrlr)
 	nvme_pcie_ctrlr_free_bars(pctrlr);
 
 	if (devhandle) {
+		if (ctrlr->opts.enable_interrupt) {
+			spdk_pci_device_disable_interrupt(devhandle);
+		}
 		spdk_pci_device_unclaim(devhandle);
 		spdk_pci_device_detach(devhandle);
 	}
 
 	spdk_free(pctrlr);
+
+	return 0;
+}
+
+static int
+nvme_pcie_ctrlr_enable_interrupt(struct spdk_nvme_ctrlr *ctrlr)
+{
+	struct spdk_pci_device *devhandle = nvme_ctrlr_proc_get_devhandle(ctrlr);
+
+	assert(devhandle != NULL);
+	int rc = spdk_pci_device_enable_interrupt(devhandle, ctrlr->opts.num_io_queues);
+	if (rc) {
+		SPDK_ERRLOG("enable_interrupt() failed\n");
+		return -EIO;
+	}
 
 	return 0;
 }
@@ -1091,6 +1109,7 @@ const struct spdk_nvme_transport_ops pcie_ops = {
 	.ctrlr_scan_attached = nvme_pci_ctrlr_scan_attached,
 	.ctrlr_destruct = nvme_pcie_ctrlr_destruct,
 	.ctrlr_enable = nvme_pcie_ctrlr_enable,
+	.ctrlr_enable_interrupt = nvme_pcie_ctrlr_enable_interrupt,
 
 	.ctrlr_get_registers = nvme_pcie_ctrlr_get_registers,
 	.ctrlr_set_reg_4 = nvme_pcie_ctrlr_set_reg_4,
