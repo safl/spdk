@@ -312,6 +312,15 @@ int spdk_bdev_set_opts(struct spdk_bdev_opts *opts);
 
 typedef void (*spdk_bdev_wait_for_examine_cb)(void *arg);
 
+enum spdk_bdev_reset_stat_mode {
+	/** Reset all stats */
+	SPDK_BDEV_RESET_STAT_ALL,
+	/** Reset only max and min stats */
+	SPDK_BDEV_RESET_STAT_MAXMIN,
+	/** Do not reset stats at all */
+	SPDK_BDEV_RESET_STAT_NONE,
+};
+
 /**
  * Report when all bdevs finished the examine process.
  * The registered cb_fn will be called just once.
@@ -2022,7 +2031,7 @@ int spdk_bdev_queue_io_wait(struct spdk_bdev *bdev, struct spdk_io_channel *ch,
  *
  */
 void spdk_bdev_get_io_stat(struct spdk_bdev *bdev, struct spdk_io_channel *ch,
-			   struct spdk_bdev_io_stat *stat);
+			   struct spdk_bdev_io_stat *stat, enum spdk_bdev_reset_stat_mode reset_mode);
 
 
 /**
@@ -2035,7 +2044,7 @@ void spdk_bdev_get_io_stat(struct spdk_bdev *bdev, struct spdk_io_channel *ch,
  * \param cb_arg Argument passed to callback function.
  */
 void spdk_bdev_get_device_stat(struct spdk_bdev *bdev, struct spdk_bdev_io_stat *stat,
-			       spdk_bdev_get_device_stat_cb cb, void *cb_arg);
+			       enum spdk_bdev_reset_stat_mode reset_mode, spdk_bdev_get_device_stat_cb cb, void *cb_arg);
 
 /**
  * Get the status of bdev_io as an NVMe status code and command specific
