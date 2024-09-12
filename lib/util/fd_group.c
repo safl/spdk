@@ -8,6 +8,7 @@
 #include "spdk/env.h"
 #include "spdk/log.h"
 #include "spdk/queue.h"
+#include "spdk/util.h"
 
 #include "spdk/fd_group.h"
 
@@ -42,6 +43,7 @@ struct event_handler {
 	/* file descriptor of the interrupt event */
 	int				fd;
 	uint32_t			events;
+	uint32_t			dev_type;
 	char				name[SPDK_MAX_EVENT_NAME_LEN + 1];
 };
 
@@ -235,13 +237,26 @@ int
 spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t events,
 			     spdk_fd_fn fn, void *arg, const char *name)
 {
+	struct spdk_event_handler_ext_opts opts;
+
+	opts.size = SPDK_SIZEOF(&opts, dev_type);
+	opts.events = events;
+	opts.dev_type = SPDK_EVENT_HANDLER_DEVICE_OTHERS;
+
+	return spdk_fd_group_add_ext_opts(fgrp, efd, fn, arg, name, &opts);
+}
+
+int
+spdk_fd_group_add_ext_opts(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *arg,
+			   const char *name, struct spdk_event_handler_ext_opts *opts)
+{
 	struct event_handler *ehdlr = NULL;
 	struct epoll_event epevent = {0};
 	int rc;
 	int epfd;
 
 	/* parameter checking */
-	if (fgrp == NULL || efd < 0 || fn == NULL) {
+	if (fgrp == NULL || efd < 0 || fn == NULL || opts == NULL) {
 		return -EINVAL;
 	}
 
@@ -262,7 +277,8 @@ spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t event
 	ehdlr->fn = fn;
 	ehdlr->fn_arg = arg;
 	ehdlr->state = EVENT_HANDLER_STATE_WAITING;
-	ehdlr->events = events;
+	ehdlr->events = opts->events;
+	ehdlr->dev_type = opts->dev_type;
 	snprintf(ehdlr->name, sizeof(ehdlr->name), "%s", name);
 
 	if (fgrp->parent) {
@@ -424,8 +440,10 @@ spdk_fd_group_wait(struct spdk_fd_group *fgrp, int timeout)
 	int totalfds = fgrp->num_fds;
 	struct epoll_event events[totalfds];
 	struct event_handler *ehdlr;
+	uint64_t count;
 	int n;
 	int nfds;
+	int bytes_read;
 
 	if (fgrp->parent != NULL) {
 		if (timeout < 0) {
@@ -481,6 +499,26 @@ spdk_fd_group_wait(struct spdk_fd_group *fgrp, int timeout)
 		}
 
 		g_event = &events[n];
+
+		/* read out to clear the ready-to-be-read flag for epoll_wait */
+		if (ehdlr->dev_type == SPDK_EVENT_HANDLER_DEVICE_VFIO) {
+			bytes_read = read(ehdlr->fd, &count, sizeof(count));
+			if (bytes_read < 0) {
+				g_event = NULL;
+				if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN) {
+					continue;
+				}
+				/* TODO: Device is buggy. Handle this properly */
+				SPDK_ERRLOG("Failed to read fd (%d) %s\n",
+					    ehdlr->fd, strerror(errno));
+				return -errno;
+			} else if (bytes_read == 0) {
+				SPDK_ERRLOG("Read nothing from fd (%d)\n", ehdlr->fd);
+				g_event = NULL;
+				return -EINVAL;
+			}
+		}
+
 		/* call the interrupt response function */
 		ehdlr->fn(ehdlr->fn_arg);
 		g_event = NULL;
@@ -516,6 +554,13 @@ spdk_fd_group_add(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn,
 int
 spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t events, spdk_fd_fn fn,
 			     void *arg, const char *name)
+{
+	return -ENOTSUP;
+}
+
+int
+spdk_fd_group_add_ext_opts(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *arg,
+			   const char *name, struct spdk_event_handler_ext_opts *opts)
 {
 	return -ENOTSUP;
 }

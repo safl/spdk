@@ -16,6 +16,11 @@ This is applicable for PCIE transport only.
 Added `spdk_nvme_ctrlr_qpair_get_efd()` API to retrieve the eventfd for the particular qpair
 for the given NVMe controller. This is applicable for PCIE transport only.
 
+### util
+
+Added `spdk_fd_group_add_ext_opts()` API which can receive `spdk_event_handler_ext_opts` structure.
+This is to prevent any further expansion of`spdk_fd_group_add()` API.
+
 ## v24.09: (Upcoming Release)
 
 ### nvmf

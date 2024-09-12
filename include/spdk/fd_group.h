@@ -17,6 +17,29 @@
 extern "C" {
 #endif
 
+#include "spdk/assert.h"
+
+/**
+ * Event handler device type. The event handler may have extra checks and can do extra
+ * processing based on this.
+ */
+enum spdk_event_handler_device {
+	SPDK_EVENT_HANDLER_DEVICE_OTHERS	= 0x0,
+	SPDK_EVENT_HANDLER_DEVICE_VFIO		= 0x1,
+};
+
+struct spdk_event_handler_ext_opts {
+	/** Size of this structure in bytes, use SPDK_SIZEOF() to calculate it */
+	size_t size;
+
+	/** Event notification types */
+	uint32_t events;
+
+	/** Device type \ref spdk_event_handler_device */
+	uint32_t dev_type;
+};
+SPDK_STATIC_ASSERT(sizeof(struct spdk_event_handler_ext_opts) == 16, "Incorrect size");
+
 /**
  * Callback function registered for the event source file descriptor.
  *
@@ -132,6 +155,25 @@ int spdk_fd_group_add(struct spdk_fd_group *fgrp, int efd,
  */
 int spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t events,
 				 spdk_fd_fn fn, void *arg,  const char *name);
+
+/**
+ * Register one event type stated in spdk_event_handler_ext_opts agrument to the specified fgrp.
+ *
+ * spdk_event_handler_ext_opts argument consists of event which is a bit mask composed by ORing
+ * together enum spdk_interrupt_event_types values. It also consists of dev_type, which can be
+ * used by event handler to perform extra checks during the spdk_fd_group_wait call.
+ *
+ * \param fgrp The fgrp registered to.
+ * \param efd File descriptor of the event source.
+ * \param fn Called each time there are events in event source.
+ * \param arg Function argument for fn.
+ * \param name Name of the event source.
+ * \param opts Extended event handler option.
+ *
+ * \return 0 if success or -errno if failed
+ */
+int spdk_fd_group_add_ext_opts(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *arg,
+			       const char *name, struct spdk_event_handler_ext_opts *opts);
 
 /*
  * \brief Register an event source with the name set to the string of the

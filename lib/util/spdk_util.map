@@ -184,6 +184,7 @@
 	spdk_fd_group_wait;
 	spdk_fd_group_add;
 	spdk_fd_group_add_for_events;
+	spdk_fd_group_add_ext_opts;
 	spdk_fd_group_remove;
 	spdk_fd_group_event_modify;
 	spdk_fd_group_get_fd;
