@@ -2525,6 +2525,7 @@ spdk_bdev_finish(spdk_bdev_fini_cb cb_fn, void *cb_arg)
 	}
 }
 
+inline
 struct spdk_bdev_io *
 bdev_channel_get_io(struct spdk_bdev_channel *channel)
 {
