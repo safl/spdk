@@ -1,5 +1,13 @@
 # Changelog
 
+## v25.01: (Future Release)
+
+### env
+
+The APIs to handle PCI device interrupts have been modified as such:
+`spdk_pci_device_enable_interrupt` also requires number of eventfds to be created.
+`spdk_pci_device_get_interrupt_efd` requires an index to be passed, which is basically the queue id.
+
 ## v24.09: (Upcoming Release)
 
 ### nvmf

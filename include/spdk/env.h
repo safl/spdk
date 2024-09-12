@@ -916,16 +916,21 @@ int spdk_pci_device_unmap_bar(struct spdk_pci_device *dev, uint32_t bar,
 			      void *mapped_addr);
 
 /**
- * Enable PCI device interrupts. (Experimental)
+ * Enable PCI device interrupts, only if VFIO MSI-X is supported.
+ * This reserves a bunch of event file descriptors, for which VFIO IRQ are set,
+ * which then can be used to enable interrupts for completion queue.
  *
  * \param dev PCI device.
+ * \param efd_count Number of event fds to reserve for ioqpairs.
  *
  * \return 0 on success, negative value on error.
  */
-int spdk_pci_device_enable_interrupt(struct spdk_pci_device *dev);
+int spdk_pci_device_enable_interrupt(struct spdk_pci_device *dev, int efd_count);
 
 /**
- * Disable PCI device interrupts. (Experimental)
+ * Disable PCI device interrupt.
+ * This disables the MSI-X interrupts for all the reserved event file descriptors
+ * and frees up them.
  *
  * \param dev PCI device.
  *
@@ -934,14 +939,15 @@ int spdk_pci_device_enable_interrupt(struct spdk_pci_device *dev);
 int spdk_pci_device_disable_interrupt(struct spdk_pci_device *dev);
 
 /**
- * Get an event file descriptor associated with a PCI device interrupt.
- * (Experimental)
+ * Get an event file descriptor associated with a PCI device, for a particular
+ * index. This index is basically the queue id.
  *
  * \param dev PCI device.
+ * \param efd_index event file descriptor index.
  *
  * \return Event file descriptor on success, negative value on error.
  */
-int spdk_pci_device_get_interrupt_efd(struct spdk_pci_device *dev);
+int spdk_pci_device_get_interrupt_efd(struct spdk_pci_device *dev, uint32_t efd_index);
 
 /**
  * Get the domain of a PCI device.
