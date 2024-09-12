@@ -21,6 +21,12 @@ If multipathing shall be enabled for nvme bdev, `bdev_opts.multipath` shall be s
 Added 3 APIs to handle multiple interrupts for PCI device `spdk_pci_device_enable_interrupts()`,
 `spdk_pci_device_disable_interrupts()`, and `spdk_pci_device_get_interrupt_efd_by_index()`.
 
+### nvme
+
+Added `enable_interrupts` field to `spdk_nvme_ctrlr_opts` structure in order to enable interrupts.
+This is only applicable for PCIe transport. This is only supported for primary process, and any
+secondary processes attempt to attach to the controller with interrupts will result in a failure.
+
 ## v24.09
 
 ### accel
