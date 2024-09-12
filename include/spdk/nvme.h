@@ -61,8 +61,15 @@ struct spdk_nvme_ctrlr_opts {
 	 */
 	bool no_shn_notification;
 
-	/* Hole at bytes 6-7. */
-	uint8_t	reserved6[2];
+	/**
+	 * Enable interrupts on completion queues. This is only supported for primary
+	 * process, and any secondary processes attempt to attach to this controller will
+	 * result in a failure.
+	 */
+	bool enable_interrupts;
+
+	/* Hole at byte 7. */
+	uint8_t	reserved7;
 
 	/**
 	 * Type of arbitration mechanism
