@@ -17,6 +17,11 @@ for the PCIe transport.
 Added 3 APIs to handle multiple interrupts for PCI device `spdk_pci_device_enable_interrupts()`,
 `spdk_pci_device_disable_interrupts()`, and `spdk_pci_device_get_interrupt_efd_by_index()`.
 
+### util
+
+Added `spdk_fd_group_add_ext()` API which can receive `spdk_event_handler_opts` structure. This is
+to prevent any further expansion of`spdk_fd_group_add()` API.
+
 ## v24.09
 
 ### accel
