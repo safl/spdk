@@ -2,6 +2,11 @@
 
 ## v25.01: (Upcoming Release)
 
+### nvme
+
+Added `enable_interrupts` field to `spdk_nvme_ctrlr_opts` struct in order to enable interrupts.
+This is applicable only for PCIe transport.
+
 ### env
 
 Added 3 APIs to handle multiple interrupts for PCI device `spdk_pci_device_enable_interrupts()`,
