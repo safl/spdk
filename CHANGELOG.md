@@ -2,6 +2,11 @@
 
 ## v25.01: (Upcoming Release)
 
+### env
+
+Added 3 APIs to handle multiple interrupts for PCI device `spdk_pci_device_enable_interrupts()`,
+`spdk_pci_device_disable_interrupts()`, and `spdk_pci_device_get_interrupt_efd_by_index()`.
+
 ## v24.09
 
 ### accel
