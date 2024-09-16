@@ -36,8 +36,8 @@ core_meta() {
 		    "path": "$exe_path",
 		    "cwd": "$cwd_path",
 		    "statm": "$statm",
-		    "filter": "$(coredump_filter)",
-		    "mapped": [ $(maps_to_json) ]
+		    "filter": "$filter",
+		    "mapped": [ $mapped ]
 		  }
 		}
 	CORE
@@ -98,24 +98,63 @@ filter_process() {
 	return 1
 }
 
+pid_hook() {
+	# Find top parent PID of the crashing PID which is still bound to the same
+	# namespace. For containers, this should iterate until docker's|containerd's
+	# shim is found.
+	local pid=$1 _pid pid_hook ppid
+	_pid=$pid
+
+	while ppid=$(ps -p"$_pid" -oppid=) && ppid=${ppid//[[:space:]]/}; do
+		[[ /proc/$pid/root -ef /proc/$ppid/root ]] || break
+		pid_hook=$ppid _pid=$ppid
+	done
+	[[ -n $pid_hook ]] || return 1
+	echo "$pid_hook"
+}
+
 args+=(core_pid)
 args+=(core_sig)
 args+=(core_ts)
 
 read -r "${args[@]}" <<< "$*"
 
-exe_path=$(readlink -f "/proc/$core_pid/exe")
-cwd_path=$(readlink -f "/proc/$core_pid/cwd")
+# Fetch all the info while the proper PID entry is still around
+exe_path=$(readlink "/proc/$core_pid/exe")
+cwd_path=$(readlink "/proc/$core_pid/cwd")
 exe_comm=$(< "/proc/$core_pid/comm")
 statm=$(< "/proc/$core_pid/statm")
 core_time=$(date -d@"$core_ts")
 core_sig_name=$(kill -l "$core_sig")
-mapfile -t maps < <(readlink -f "/proc/$core_pid/map_files/"*)
+mapfile -t maps < <(readlink "/proc/$core_pid/map_files/"*)
+mapped=$(maps_to_json)
+filter=$(coredump_filter)
 
 # Filter out processes that we don't care about
 filter_process || exit 0
 
-core=$(< "$rootdir/.coredump_path")/${exe_path##*/}_$core_pid.core
+if [[ ! /proc/$core_pid/ns/mnt -ef /proc/self/ns/mnt ]]; then
+	# $core_pid is in a separate namespace so it's quite likely that we are
+	# catching a core triggered from within a supported container.
+	if [[ -e /proc/$core_pid/root/.dockerenv ]]; then
+		# Since we can't tell exactly where actual spdk $rootdir is within
+		# the container we need to use some predefined path to dump the core
+		# to. Also, since the proc entry for $core_pid will disappear from
+		# the main namespace after the core is written out, we need to find
+		# something to hook ourselves into, i.e., $core_pid's top parent.
+		coredump_path=/proc/$(pid_hook "$core_pid")/root/var/spdk/coredumps
+		mkdir -p "$coredump_path"
+	else
+		# Oh? Well, if this is not a supported container, then we are inside
+		# some unknown environment. No point in dumping a core then so
+		# just bail.
+		exit 0
+	fi
+else
+	coredump_path=$(< "$rootdir/.coredump_path")
+fi
+
+core=$coredump_path/${exe_path##*/}_$core_pid.core
 stderr
 
 # RLIMIT_CORE is not enforced when core is piped to us. To make

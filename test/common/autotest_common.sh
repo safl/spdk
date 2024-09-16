@@ -792,7 +792,19 @@ function process_core() {
 	# critical cores lying around is unlikely.
 	((autotest_es != 0)) && sleep 10
 
-	local coredumps core
+	local coredumps core ext_cores ext_coresdir=/var/spdk/coredumps
+
+	if [[ -e /.dockerenv ]]; then
+		# If we are inside a supported container, our core-collector, taking
+		# for granted it was properly set on the host's side, will write all
+		# the cores outside of the repo. Make sure we move everything into
+		# one place.
+		ext_cores=("$ext_coresdir/"*)
+		if ((${#ext_cores[@]} > 0)); then
+			mkdir -p "$output_dir/coredumps"
+			mv "${ext_cores[@]}" "$output_dir/coredumps/"
+		fi
+	fi
 
 	coredumps=("$output_dir/coredumps/"*.bt.txt)
 
