@@ -40,14 +40,14 @@ raid0_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 							 bdev_io->u.bdev.offset_blocks);
 			if (rc != 0) {
 				SPDK_ERRLOG("Reftag verify failed.\n");
-				raid_bdev_io_complete(raid_io, SPDK_BDEV_IO_STATUS_FAILED);
+				raid_bdev_io_complete_part_single(raid_io, bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
 				return;
 			}
 		}
 
-		raid_bdev_io_complete(raid_io, SPDK_BDEV_IO_STATUS_SUCCESS);
+		raid_bdev_io_complete_part_single(raid_io, bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
 	} else {
-		raid_bdev_io_complete(raid_io, SPDK_BDEV_IO_STATUS_FAILED);
+		raid_bdev_io_complete_part_single(raid_io, bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
 	}
 
 	spdk_bdev_free_io(bdev_io);
@@ -110,6 +110,8 @@ raid0_submit_rw_request(struct raid_bdev_io *raid_io)
 		assert(0);
 	}
 
+	raid_io->base_bdev_io_remaining = 1;
+
 	/*
 	 * Submit child io to bdev layer with using base bdev descriptors, base
 	 * bdev lba, base bdev child io length in blocks, buffer, completion
@@ -137,7 +139,7 @@ raid0_submit_rw_request(struct raid_bdev_io *raid_io)
 							  pd_blocks, bdev, raid_io->offset_blocks);
 			if (ret != 0) {
 				SPDK_ERRLOG("bdev io submit error due to DIX verify failure\n");
-				raid_bdev_io_complete(raid_io, SPDK_BDEV_IO_STATUS_FAILED);
+				raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_FAILED);
 				return;
 			}
 		}
@@ -157,7 +159,7 @@ raid0_submit_rw_request(struct raid_bdev_io *raid_io)
 	} else if (ret != 0) {
 		SPDK_ERRLOG("bdev io submit error not due to ENOMEM, it should not happen\n");
 		assert(false);
-		raid_bdev_io_complete(raid_io, SPDK_BDEV_IO_STATUS_FAILED);
+		raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_FAILED);
 	}
 }
 
