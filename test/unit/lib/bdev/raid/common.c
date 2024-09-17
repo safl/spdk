@@ -285,6 +285,13 @@ raid_bdev_io_complete_part(struct raid_bdev_io *raid_io, uint64_t completed,
 	}
 }
 
+bool
+raid_bdev_io_complete_part_single(struct raid_bdev_io *raid_io, struct spdk_bdev_io *part_io,
+				  enum spdk_bdev_io_status status)
+{
+	return raid_bdev_io_complete_part(raid_io, 1, status);
+}
+
 struct raid_base_bdev_info *
 raid_bdev_channel_get_base_info(struct raid_bdev_io_channel *raid_ch, struct spdk_bdev *base_bdev)
 {
