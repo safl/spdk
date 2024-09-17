@@ -116,6 +116,7 @@ pid_hook() {
 args+=(core_pid)
 args+=(core_sig)
 args+=(core_ts)
+generic_path=/var/spdk/coredumps
 
 read -r "${args[@]}" <<< "$*"
 
@@ -130,9 +131,6 @@ mapfile -t maps < <(readlink "/proc/$core_pid/map_files/"*)
 mapped=$(maps_to_json)
 filter=$(coredump_filter)
 
-# Filter out processes that we don't care about
-filter_process || exit 0
-
 if [[ ! /proc/$core_pid/ns/mnt -ef /proc/self/ns/mnt ]]; then
 	# $core_pid is in a separate namespace so it's quite likely that we are
 	# catching a core triggered from within a supported container.
@@ -142,18 +140,25 @@ if [[ ! /proc/$core_pid/ns/mnt -ef /proc/self/ns/mnt ]]; then
 		# to. Also, since the proc entry for $core_pid will disappear from
 		# the main namespace after the core is written out, we need to find
 		# something to hook ourselves into, i.e., $core_pid's top parent.
-		coredump_path=/proc/$(pid_hook "$core_pid")/root/var/spdk/coredumps
-		mkdir -p "$coredump_path"
+		coredump_path=/proc/$(pid_hook "$core_pid")/root/$generic_path
 	else
 		# Oh? Well, if this is not a supported container, then we are inside
 		# some unknown environment. No point in dumping a core then so
 		# just bail.
 		exit 0
 	fi
-else
+	# Don't filter out processes as our filter depends mostly on $rootdir which is
+	# derived from location of $0. Just take all in.
+elif [[ -e $rootdir/.coredump_path ]]; then
 	coredump_path=$(< "$rootdir/.coredump_path")
-fi
+	# Filter out processes that we don't care about
+	filter_process
+else
+	coredump_path=$generic_path
+	# This is "global" mode, don't filter out processes, take all in.
+fi || exit 0
 
+mkdir -p "$coredump_path"
 core=$coredump_path/${exe_path##*/}_$core_pid.core
 stderr
 
