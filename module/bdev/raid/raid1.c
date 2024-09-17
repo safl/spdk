@@ -64,9 +64,9 @@ raid1_write_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void 
 
 	spdk_bdev_free_io(bdev_io);
 
-	raid_bdev_io_complete_part(raid_io, 1, success ?
-				   SPDK_BDEV_IO_STATUS_SUCCESS :
-				   SPDK_BDEV_IO_STATUS_FAILED);
+	raid_bdev_io_complete_part_single(raid_io, bdev_io, success ?
+					  SPDK_BDEV_IO_STATUS_SUCCESS :
+					  SPDK_BDEV_IO_STATUS_FAILED);
 }
 
 static struct raid_base_bdev_info *
@@ -296,7 +296,7 @@ raid1_submit_write_request(struct raid_bdev_io *raid_io)
 		if (base_ch == NULL) {
 			/* skip a missing base bdev's slot */
 			raid_io->base_bdev_io_submitted++;
-			raid_bdev_io_complete_part(raid_io, 1, SPDK_BDEV_IO_STATUS_FAILED);
+			raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_FAILED);
 			continue;
 		}
 

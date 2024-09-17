@@ -367,7 +367,7 @@ static void
 raid5f_stripe_request_chunk_write_complete(struct stripe_request *stripe_req,
 		enum spdk_bdev_io_status status)
 {
-	if (raid_bdev_io_complete_part(stripe_req->raid_io, 1, status)) {
+	if (raid_bdev_io_complete_part_single(stripe_req->raid_io, NULL, status)) {
 		raid5f_stripe_request_release(stripe_req);
 	}
 }
@@ -378,7 +378,7 @@ raid5f_stripe_request_chunk_read_complete(struct stripe_request *stripe_req,
 {
 	struct raid_bdev_io *raid_io = stripe_req->raid_io;
 
-	raid_bdev_io_complete_part(raid_io, 1, status);
+	raid_bdev_io_complete_part_single(raid_io, NULL, status);
 }
 
 static void
@@ -442,7 +442,7 @@ raid5f_chunk_submit(struct chunk *chunk)
 	switch (stripe_req->type) {
 	case STRIPE_REQ_WRITE:
 		if (base_ch == NULL) {
-			raid_bdev_io_complete_part(raid_io, 1, SPDK_BDEV_IO_STATUS_SUCCESS);
+			raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_SUCCESS);
 			return 0;
 		}
 
@@ -452,7 +452,7 @@ raid5f_chunk_submit(struct chunk *chunk)
 		break;
 	case STRIPE_REQ_RECONSTRUCT:
 		if (chunk == stripe_req->reconstruct.chunk) {
-			raid_bdev_io_complete_part(raid_io, 1, SPDK_BDEV_IO_STATUS_SUCCESS);
+			raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_SUCCESS);
 			return 0;
 		}
 

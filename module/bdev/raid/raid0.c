@@ -274,9 +274,9 @@ raid0_base_io_complete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct raid_bdev_io *raid_io = cb_arg;
 
-	raid_bdev_io_complete_part(raid_io, 1, success ?
-				   SPDK_BDEV_IO_STATUS_SUCCESS :
-				   SPDK_BDEV_IO_STATUS_FAILED);
+	raid_bdev_io_complete_part_single(raid_io, bdev_io, success ?
+					  SPDK_BDEV_IO_STATUS_SUCCESS :
+					  SPDK_BDEV_IO_STATUS_FAILED);
 
 	spdk_bdev_free_io(bdev_io);
 }

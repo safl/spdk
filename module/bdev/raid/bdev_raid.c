@@ -700,6 +700,13 @@ raid_bdev_io_complete_part(struct raid_bdev_io *raid_io, uint64_t completed,
 	}
 }
 
+bool
+raid_bdev_io_complete_part_single(struct raid_bdev_io *raid_io, struct spdk_bdev_io *part_io,
+				  enum spdk_bdev_io_status status)
+{
+	return raid_bdev_io_complete_part(raid_io, 1, status);
+}
+
 /*
  * brief:
  * raid_bdev_queue_io_wait function processes the IO which failed to submit.
@@ -729,9 +736,9 @@ raid_base_bdev_reset_complete(struct spdk_bdev_io *bdev_io, bool success, void *
 
 	spdk_bdev_free_io(bdev_io);
 
-	raid_bdev_io_complete_part(raid_io, 1, success ?
-				   SPDK_BDEV_IO_STATUS_SUCCESS :
-				   SPDK_BDEV_IO_STATUS_FAILED);
+	raid_bdev_io_complete_part_single(raid_io, bdev_io, success ?
+					  SPDK_BDEV_IO_STATUS_SUCCESS :
+					  SPDK_BDEV_IO_STATUS_FAILED);
 }
 
 static void raid_bdev_submit_reset_request(struct raid_bdev_io *raid_io);
@@ -774,7 +781,7 @@ raid_bdev_submit_reset_request(struct raid_bdev_io *raid_io)
 		base_ch = raid_io->raid_ch->base_channel[i];
 		if (base_ch == NULL) {
 			raid_io->base_bdev_io_submitted++;
-			raid_bdev_io_complete_part(raid_io, 1, SPDK_BDEV_IO_STATUS_SUCCESS);
+			raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_SUCCESS);
 			continue;
 		}
 		ret = spdk_bdev_reset(base_info->desc, base_ch,

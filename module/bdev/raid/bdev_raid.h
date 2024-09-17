@@ -366,6 +366,8 @@ __RAID_MODULE_REGISTER(__LINE__)(void)					\
 
 bool raid_bdev_io_complete_part(struct raid_bdev_io *raid_io, uint64_t completed,
 				enum spdk_bdev_io_status status);
+bool raid_bdev_io_complete_part_single(struct raid_bdev_io *raid_io, struct spdk_bdev_io *part_io,
+				       enum spdk_bdev_io_status status);
 void raid_bdev_queue_io_wait(struct raid_bdev_io *raid_io, struct spdk_bdev *bdev,
 			     struct spdk_io_channel *ch, spdk_bdev_io_wait_cb cb_fn);
 void raid_bdev_io_complete(struct raid_bdev_io *raid_io, enum spdk_bdev_io_status status);
