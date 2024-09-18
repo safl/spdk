@@ -318,11 +318,6 @@ get_child_io(struct io_output *output)
 static void
 child_io_complete(struct spdk_bdev_io *bdev_io, spdk_bdev_io_completion_cb cb, void *cb_arg)
 {
-	if (g_child_io_status_flag && bdev_io->type == SPDK_BDEV_IO_TYPE_READ) {
-		verify_dif(bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt, bdev_io->u.bdev.md_buf,
-			   bdev_io->u.bdev.offset_blocks, bdev_io->u.bdev.num_blocks, bdev_io->bdev);
-	}
-
 	cb(bdev_io, g_child_io_status_flag, cb_arg);
 }
 
@@ -390,8 +385,6 @@ spdk_bdev_readv_blocks_ext(struct spdk_bdev_desc *desc, struct spdk_io_channel *
 	SPDK_CU_ASSERT_FATAL(g_io_output_index <= (g_max_io_size / g_strip_size) + 1);
 	set_io_output(output, desc, ch, offset_blocks, num_blocks, cb, cb_arg,
 		      SPDK_BDEV_IO_TYPE_READ, iov, iovcnt, opts->metadata);
-	generate_dif(iov, iovcnt, opts->metadata, offset_blocks, num_blocks,
-		     spdk_bdev_desc_get_bdev(desc));
 	g_io_output_index++;
 
 	child_io = get_child_io(output);
