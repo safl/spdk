@@ -114,7 +114,7 @@ concat_submit_rw_request(struct raid_bdev_io *raid_io)
 						 raid_io, &io_opts);
 	} else if (raid_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
 		ret = raid_bdev_writev_blocks_ext(base_info, base_ch,
-						  raid_io->iovs, raid_io->iovcnt,
+						  raid_io->iovs, raid_io->iovcnt, 0,
 						  pd_lba, pd_blocks, concat_bdev_io_completion,
 						  raid_io, &io_opts);
 	} else {

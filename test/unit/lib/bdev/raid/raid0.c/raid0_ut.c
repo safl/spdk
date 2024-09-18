@@ -218,7 +218,8 @@ verify_dif(struct iovec *iovs, int iovcnt, void *md_buf,
 }
 
 static void
-remap_dif(void *md_buf, uint64_t num_blocks, struct spdk_bdev *bdev, uint32_t remapped_offset)
+remap_dif(void *md_buf, uint64_t num_blocks, struct spdk_bdev *bdev,
+	  uint32_t current_offset, uint32_t remapped_offset)
 {
 	struct spdk_dif_ctx dif_ctx;
 	int rc;
@@ -244,7 +245,7 @@ remap_dif(void *md_buf, uint64_t num_blocks, struct spdk_bdev *bdev, uint32_t re
 			       spdk_bdev_is_dif_head_of_md(bdev),
 			       dif_type,
 			       bdev->dif_check_flags,
-			       0,
+			       current_offset,
 			       0xFFFF, 0x123, 0, 0, &dif_opts);
 	SPDK_CU_ASSERT_FATAL(rc == 0);
 
@@ -254,7 +255,7 @@ remap_dif(void *md_buf, uint64_t num_blocks, struct spdk_bdev *bdev, uint32_t re
 
 		spdk_dif_ctx_set_remapped_init_ref_tag(&dif_ctx, remapped_offset);
 
-		rc = spdk_dix_remap_ref_tag(&md_iov, num_blocks, &dif_ctx, &errblk, false);
+		rc = spdk_dix_remap_ref_tag(&md_iov, num_blocks, &dif_ctx, &errblk);
 		SPDK_CU_ASSERT_FATAL(rc == 0);
 	}
 }
@@ -268,18 +269,9 @@ raid_test_bdev_io_complete(struct raid_bdev_io *raid_io, enum spdk_bdev_io_statu
 
 int
 raid_bdev_remap_dix_reftag(void *md_buf, uint64_t num_blocks,
-			   struct spdk_bdev *bdev, uint32_t remapped_offset)
+			   struct spdk_bdev *bdev, uint32_t current_offset, uint32_t remapped_offset)
 {
-	remap_dif(md_buf, num_blocks, bdev, remapped_offset);
-
-	return 0;
-}
-
-int
-raid_bdev_verify_dix_reftag(struct iovec *iovs, int iovcnt, void *md_buf,
-			    uint64_t num_blocks, struct spdk_bdev *bdev, uint32_t offset_blocks)
-{
-	verify_dif(iovs, iovcnt, md_buf, offset_blocks, num_blocks, bdev);
+	remap_dif(md_buf, num_blocks, bdev, current_offset, remapped_offset);
 
 	return 0;
 }

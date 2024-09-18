@@ -28,23 +28,8 @@ static void
 raid0_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct raid_bdev_io *raid_io = cb_arg;
-	int rc;
 
 	if (success) {
-		if (spdk_unlikely(bdev_io->type == SPDK_BDEV_IO_TYPE_READ &&
-				  spdk_bdev_get_dif_type(bdev_io->bdev) != SPDK_DIF_DISABLE &&
-				  bdev_io->bdev->dif_check_flags & SPDK_DIF_FLAGS_REFTAG_CHECK)) {
-
-			rc = raid_bdev_verify_dix_reftag(bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
-							 bdev_io->u.bdev.md_buf, bdev_io->u.bdev.num_blocks, bdev_io->bdev,
-							 bdev_io->u.bdev.offset_blocks);
-			if (rc != 0) {
-				SPDK_ERRLOG("Reftag verify failed.\n");
-				raid_bdev_io_complete_part_single(raid_io, bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
-				return;
-			}
-		}
-
 		raid_bdev_io_complete_part_single(raid_io, bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
 	} else {
 		raid_bdev_io_complete_part_single(raid_io, bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
@@ -131,21 +116,8 @@ raid0_submit_rw_request(struct raid_bdev_io *raid_io)
 						 pd_lba, pd_blocks, raid0_bdev_io_completion,
 						 raid_io, &io_opts);
 	} else if (raid_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
-		struct spdk_bdev *bdev = &base_info->raid_bdev->bdev;
-
-		if (spdk_unlikely(spdk_bdev_get_dif_type(bdev) != SPDK_DIF_DISABLE &&
-				  bdev->dif_check_flags & SPDK_DIF_FLAGS_REFTAG_CHECK)) {
-			ret = raid_bdev_verify_dix_reftag(raid_io->iovs, raid_io->iovcnt, io_opts.metadata,
-							  pd_blocks, bdev, raid_io->offset_blocks);
-			if (ret != 0) {
-				SPDK_ERRLOG("bdev io submit error due to DIX verify failure\n");
-				raid_bdev_io_complete_part_single(raid_io, NULL, SPDK_BDEV_IO_STATUS_FAILED);
-				return;
-			}
-		}
-
 		ret = raid_bdev_writev_blocks_ext(base_info, base_ch,
-						  raid_io->iovs, raid_io->iovcnt,
+						  raid_io->iovs, raid_io->iovcnt, raid_io->offset_blocks,
 						  pd_lba, pd_blocks, raid0_bdev_io_completion,
 						  raid_io, &io_opts);
 	} else {
