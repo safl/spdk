@@ -524,7 +524,7 @@ raid_bdev_destruct(void *ctx)
 
 int
 raid_bdev_remap_dix_reftag(void *md_buf, uint64_t num_blocks,
-			   struct spdk_bdev *bdev, uint32_t remapped_offset)
+			   struct spdk_bdev *bdev, uint32_t current_offset, uint32_t remapped_offset)
 {
 	struct spdk_dif_ctx dif_ctx;
 	struct spdk_dif_error err_blk = {};
@@ -545,7 +545,7 @@ raid_bdev_remap_dix_reftag(void *md_buf, uint64_t num_blocks,
 			       bdev->blocklen, bdev->md_len, bdev->md_interleave,
 			       bdev->dif_is_head_of_md, bdev->dif_type,
 			       SPDK_DIF_FLAGS_REFTAG_CHECK,
-			       0, 0, 0, 0, 0, &dif_opts);
+			       current_offset, 0, 0, 0, 0, &dif_opts);
 	if (rc != 0) {
 		SPDK_ERRLOG("Initialization of DIF context failed\n");
 		return rc;
@@ -553,47 +553,9 @@ raid_bdev_remap_dix_reftag(void *md_buf, uint64_t num_blocks,
 
 	spdk_dif_ctx_set_remapped_init_ref_tag(&dif_ctx, remapped_offset);
 
-	rc = spdk_dix_remap_ref_tag(&md_iov, num_blocks, &dif_ctx, &err_blk, false);
+	rc = spdk_dix_remap_ref_tag(&md_iov, num_blocks, &dif_ctx, &err_blk);
 	if (rc != 0) {
 		SPDK_ERRLOG("Remapping reference tag failed. type=%d, offset=%d"
-			    PRIu32 "\n", err_blk.err_type, err_blk.err_offset);
-	}
-
-	return rc;
-}
-
-int
-raid_bdev_verify_dix_reftag(struct iovec *iovs, int iovcnt, void *md_buf,
-			    uint64_t num_blocks, struct spdk_bdev *bdev, uint32_t offset_blocks)
-{
-	struct spdk_dif_ctx dif_ctx;
-	struct spdk_dif_error err_blk = {};
-	int rc;
-	struct spdk_dif_ctx_init_ext_opts dif_opts;
-	struct iovec md_iov = {
-		.iov_base	= md_buf,
-		.iov_len	= num_blocks * bdev->md_len,
-	};
-
-	if (md_buf == NULL) {
-		return 0;
-	}
-
-	dif_opts.size = SPDK_SIZEOF(&dif_opts, dif_pi_format);
-	dif_opts.dif_pi_format = bdev->dif_pi_format;
-	rc = spdk_dif_ctx_init(&dif_ctx,
-			       bdev->blocklen, bdev->md_len, bdev->md_interleave,
-			       bdev->dif_is_head_of_md, bdev->dif_type,
-			       SPDK_DIF_FLAGS_REFTAG_CHECK,
-			       offset_blocks, 0, 0, 0, 0, &dif_opts);
-	if (rc != 0) {
-		SPDK_ERRLOG("Initialization of DIF context failed\n");
-		return rc;
-	}
-
-	rc = spdk_dix_verify(iovs, iovcnt, &md_iov, num_blocks, &dif_ctx, &err_blk);
-	if (rc != 0) {
-		SPDK_ERRLOG("Reference tag check failed. type=%d, offset=%d"
 			    PRIu32 "\n", err_blk.err_type, err_blk.err_offset);
 	}
 
@@ -604,7 +566,6 @@ void
 raid_bdev_io_complete(struct raid_bdev_io *raid_io, enum spdk_bdev_io_status status)
 {
 	struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(raid_io);
-	int rc;
 
 	if (raid_io->split.offset != RAID_OFFSET_BLOCKS_INVALID) {
 		struct iovec *split_iov = raid_io->split.iov;
@@ -648,18 +609,6 @@ raid_bdev_io_complete(struct raid_bdev_io *raid_io, enum spdk_bdev_io_status sta
 	if (spdk_unlikely(raid_io->completion_cb != NULL)) {
 		raid_io->completion_cb(raid_io, status);
 	} else {
-		if (spdk_unlikely(bdev_io->type == SPDK_BDEV_IO_TYPE_READ &&
-				  spdk_bdev_get_dif_type(bdev_io->bdev) != SPDK_DIF_DISABLE &&
-				  bdev_io->bdev->dif_check_flags & SPDK_DIF_FLAGS_REFTAG_CHECK &&
-				  status == SPDK_BDEV_IO_STATUS_SUCCESS)) {
-
-			rc = raid_bdev_remap_dix_reftag(bdev_io->u.bdev.md_buf,
-							bdev_io->u.bdev.num_blocks, bdev_io->bdev,
-							bdev_io->u.bdev.offset_blocks);
-			if (rc != 0) {
-				status = SPDK_BDEV_IO_STATUS_FAILED;
-			}
-		}
 		spdk_bdev_io_complete(bdev_io, status);
 	}
 }
@@ -704,6 +653,24 @@ bool
 raid_bdev_io_complete_part_single(struct raid_bdev_io *raid_io, struct spdk_bdev_io *part_io,
 				  enum spdk_bdev_io_status status)
 {
+	struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(raid_io);
+	int rc;
+
+	if (spdk_unlikely(bdev_io->type == SPDK_BDEV_IO_TYPE_READ &&
+			  spdk_bdev_get_dif_type(bdev_io->bdev) != SPDK_DIF_DISABLE &&
+			  bdev_io->bdev->dif_check_flags & SPDK_DIF_FLAGS_REFTAG_CHECK &&
+			  status == SPDK_BDEV_IO_STATUS_SUCCESS &&
+			  part_io != NULL)) {
+
+		rc = raid_bdev_remap_dix_reftag(bdev_io->u.bdev.md_buf,
+						bdev_io->u.bdev.num_blocks, bdev_io->bdev,
+						part_io->u.bdev.offset_blocks,
+						bdev_io->u.bdev.offset_blocks);
+		if (rc != 0) {
+			status = SPDK_BDEV_IO_STATUS_FAILED;
+		}
+	}
+
 	return raid_bdev_io_complete_part(raid_io, 1, status);
 }
 

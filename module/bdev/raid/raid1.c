@@ -111,7 +111,7 @@ raid1_correct_read_error(void *_raid_io)
 	assert(base_ch != NULL);
 
 	raid1_init_ext_io_opts(&io_opts, raid_io);
-	ret = raid_bdev_writev_blocks_ext(base_info, base_ch, raid_io->iovs, raid_io->iovcnt,
+	ret = raid_bdev_writev_blocks_ext(base_info, base_ch, raid_io->iovs, raid_io->iovcnt, 0,
 					  raid_io->offset_blocks, raid_io->num_blocks,
 					  raid1_correct_read_error_completion, raid_io, &io_opts);
 	if (spdk_unlikely(ret != 0)) {
@@ -300,7 +300,7 @@ raid1_submit_write_request(struct raid_bdev_io *raid_io)
 			continue;
 		}
 
-		ret = raid_bdev_writev_blocks_ext(base_info, base_ch, raid_io->iovs, raid_io->iovcnt,
+		ret = raid_bdev_writev_blocks_ext(base_info, base_ch, raid_io->iovs, raid_io->iovcnt, 0,
 						  raid_io->offset_blocks, raid_io->num_blocks,
 						  raid1_write_bdev_io_completion, raid_io, &io_opts);
 		if (spdk_unlikely(ret != 0)) {
@@ -451,7 +451,7 @@ raid1_process_submit_write(struct raid_bdev_process_request *process_req)
 
 	raid1_init_ext_io_opts(&io_opts, raid_io);
 	ret = raid_bdev_writev_blocks_ext(process_req->target, process_req->target_ch,
-					  raid_io->iovs, raid_io->iovcnt,
+					  raid_io->iovs, raid_io->iovcnt, 0,
 					  raid_io->offset_blocks, raid_io->num_blocks,
 					  raid1_process_write_completed, process_req, &io_opts);
 	if (spdk_unlikely(ret != 0)) {

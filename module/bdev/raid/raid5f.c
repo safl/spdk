@@ -446,7 +446,7 @@ raid5f_chunk_submit(struct chunk *chunk)
 			return 0;
 		}
 
-		ret = raid_bdev_writev_blocks_ext(base_info, base_ch, chunk->iovs, chunk->iovcnt,
+		ret = raid_bdev_writev_blocks_ext(base_info, base_ch, chunk->iovs, chunk->iovcnt, 0,
 						  base_offset_blocks, raid_bdev->strip_size,
 						  raid5f_chunk_complete_bdev_io, chunk, &io_opts);
 		break;
@@ -1172,7 +1172,7 @@ raid5f_process_submit_write(struct raid_bdev_process_request *process_req)
 
 	raid5f_init_ext_io_opts(&io_opts, raid_io);
 	ret = raid_bdev_writev_blocks_ext(process_req->target, process_req->target_ch,
-					  raid_io->iovs, raid_io->iovcnt,
+					  raid_io->iovs, raid_io->iovcnt, 0,
 					  stripe_index << raid_bdev->strip_size_shift, raid_bdev->strip_size,
 					  raid5f_process_write_completed, process_req, &io_opts);
 	if (spdk_unlikely(ret != 0)) {
