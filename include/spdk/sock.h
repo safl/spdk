@@ -394,6 +394,15 @@ int32_t spdk_sock_get_numa_id(struct spdk_sock *sock);
 int spdk_sock_close(struct spdk_sock **sock);
 
 /**
+ * Check if the socket needs to be flushed.
+ *
+ * \param sock Socket to check.
+ *
+ * \return 1 if the socket needs to be flushed, 0 otherwise, -1(with errno set) on failure
+ */
+int spdk_sock_need_flush(struct spdk_sock *sock);
+
+/**
  * Flush a socket from data gathered in previous writev_async calls.
  *
  * \param sock Socket to flush.

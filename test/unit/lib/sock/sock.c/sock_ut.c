@@ -803,10 +803,19 @@ _sock_close(const char *ip, int port, char *impl_name)
 	spdk_sock_writev_async(server_sock, req2);
 	CU_ASSERT(cb_arg2 == false);
 
+	/* Test spdk_sock_need_flush when sock is NULL */
+	rc = spdk_sock_need_flush(NULL);
+	CU_ASSERT(rc == -1);
+	CU_ASSERT(errno == EBADF);
+
 	/* Test spdk_sock_flush when sock is NULL */
 	rc = spdk_sock_flush(NULL);
 	CU_ASSERT(rc == -1);
 	CU_ASSERT(errno == EBADF);
+
+	/* Test spdk_sock_need_flush when sock is not NULL */
+	rc = spdk_sock_need_flush(client_sock);
+	CU_ASSERT(rc == 0 || rc == 1);
 
 	/* Test spdk_sock_flush when sock is not NULL */
 	rc = spdk_sock_flush(client_sock);

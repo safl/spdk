@@ -555,6 +555,20 @@ spdk_sock_recv_next(struct spdk_sock *sock, void **buf, void **ctx)
 }
 
 int
+spdk_sock_need_flush(struct spdk_sock *sock)
+{
+	struct spdk_sock_request *req;
+
+	if (sock == NULL || sock->flags.closed) {
+		errno = EBADF;
+		return -1;
+	}
+
+	req = TAILQ_FIRST(&sock->queued_reqs);
+	return req != NULL;
+}
+
+int
 spdk_sock_flush(struct spdk_sock *sock)
 {
 	if (sock == NULL || sock->flags.closed) {
