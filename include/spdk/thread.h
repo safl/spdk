@@ -423,6 +423,9 @@ int spdk_thread_has_active_pollers(struct spdk_thread *thread);
  */
 bool spdk_thread_has_pollers(struct spdk_thread *thread);
 
+/* Returns number of non-timed pollers currently reporting pending work. */
+uint32_t spdk_thread_get_pending_work_count(struct spdk_thread *thread);
+
 /**
  * Returns whether there are scheduled operations to be run on the thread.
  *
@@ -668,6 +671,9 @@ void spdk_poller_pause(struct spdk_poller *poller);
  * \param poller The poller to resume.
  */
 void spdk_poller_resume(struct spdk_poller *poller);
+
+/* Set the current pending_work status for the specified poller. */
+void spdk_poller_set_pending_work(struct spdk_poller *poller, bool has_pending_work);
 
 /**
  * Register the opaque io_device context as an I/O device.

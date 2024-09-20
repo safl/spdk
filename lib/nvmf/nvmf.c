@@ -268,6 +268,10 @@ nvmf_tgt_create_poll_group(void *io_device, void *ctx_buf)
 
 	group->poller = SPDK_POLLER_REGISTER(nvmf_poll_group_poll, group, 0);
 	spdk_poller_register_interrupt(group->poller, NULL, NULL);
+	/* For now, just say pending work is always false, we will change this
+	 * to return an accurate value later.
+	 */
+	spdk_poller_set_pending_work(group->poller, false);
 
 	SPDK_DTRACE_PROBE1_TICKS(nvmf_create_poll_group, spdk_thread_get_id(thread));
 

@@ -993,6 +993,23 @@ _reactor_run(struct spdk_reactor *reactor)
 	}
 }
 
+static void
+__cb(void *arg1, void *arg2)
+{
+}
+
+static void
+__change_interrupt_mode(void *arg1, void *arg2)
+{
+	struct spdk_reactor *reactor = arg1;
+
+	/* There's nothing we need to do after the interrupt mode is set, so
+	 * just pass a do-nothing callback function here since we have to
+	 * pass something.
+	 */
+	spdk_reactor_set_interrupt_mode(reactor->lcore, !reactor->in_interrupt, __cb, NULL);
+}
+
 static int
 reactor_run(void *arg)
 {
@@ -1020,6 +1037,40 @@ reactor_run(void *arg)
 			reactor_interrupt_run(reactor);
 		} else {
 			_reactor_run(reactor);
+		}
+
+		if (spdk_interrupt_mode_is_enabled()) {
+			/* Assume we have no pending work. */
+			bool no_pending_work = true;
+
+			/* Walk all of the spdk_threads on this reactor, if
+			 * any of them having pending_work, break from the
+			 * loop.
+			 */
+			TAILQ_FOREACH(lw_thread, &reactor->threads, link) {
+				thread = spdk_thread_get_from_ctx(lw_thread);
+				if (spdk_thread_get_pending_work_count(thread) > 0) {
+					no_pending_work = false;
+					break;
+				}
+			}
+
+			/* If reactor->in_interrupt doesn't match no_pending_work,
+			 * then we need to change the interrupt mode. But we can
+			 * only do that if we don't already have a change in progress.
+			 */
+			if (reactor->in_interrupt == no_pending_work &&
+			    !reactor->set_interrupt_mode_in_progress) {
+				struct spdk_event *e;
+
+				/* We have to change the interrupt mode from the
+				 * scheduling reactor, so send a message to
+				 * that reactor to change it on our behalf.
+				 */
+				e = spdk_event_allocate(g_scheduling_reactor->lcore,
+							__change_interrupt_mode, reactor, NULL);
+				spdk_event_call(e);
+			}
 		}
 
 		if (g_framework_context_switch_monitor_enabled) {

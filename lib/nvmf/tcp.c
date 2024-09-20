@@ -834,6 +834,11 @@ nvmf_tcp_create(struct spdk_nvmf_transport_opts *opts)
 	}
 
 	spdk_poller_register_interrupt(ttransport->accept_poller, NULL, NULL);
+	/* We can say pending_work is always false here. This is simply waiting
+	 * for incoming connections, and we don't know when they will
+	 * happen.
+	 */
+	spdk_poller_set_pending_work(ttransport->accept_poller, false);
 
 	ttransport->listen_sock_group = spdk_sock_group_create(NULL);
 	if (ttransport->listen_sock_group == NULL) {

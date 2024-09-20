@@ -869,6 +869,10 @@ bdev_aio_group_create_cb(void *io_device, void *ctx_buf)
 
 	ch->poller = SPDK_POLLER_REGISTER(bdev_aio_group_poll, ch, 0);
 	spdk_poller_register_interrupt(ch->poller, NULL, NULL);
+	/* For now, just say pending work is always false, we will change this
+	 * to return an accurate value later.
+	 */
+	spdk_poller_set_pending_work(ch->poller, false);
 
 	return 0;
 }

@@ -74,6 +74,7 @@ struct spdk_poller {
 
 	/* Current state of the poller; should only be accessed from the poller's thread. */
 	enum spdk_poller_state		state;
+	bool				has_pending_work;
 
 	uint64_t			period_ticks;
 	uint64_t			next_run_tick;
@@ -125,6 +126,7 @@ struct spdk_thread {
 	 */
 	TAILQ_HEAD(paused_pollers_head, spdk_poller)	paused_pollers;
 	struct spdk_ring		*messages;
+	uint32_t			pending_work_count;
 	int				msg_fd;
 	SLIST_HEAD(, spdk_msg)		msg_cache;
 	size_t				msg_cache_count;
@@ -1702,6 +1704,10 @@ poller_register(spdk_poller_fn fn,
 	poller->id = thread->next_poller_id++;
 
 	poller->period_ticks = convert_us_to_ticks(period_microseconds);
+	if (period_microseconds == 0) {
+		poller->has_pending_work = true;
+		thread->pending_work_count++;
+	}
 
 	if (spdk_interrupt_mode_is_enabled()) {
 		int rc;
@@ -1741,6 +1747,12 @@ poller_register(spdk_poller_fn fn,
 	thread_insert_poller(thread, poller);
 
 	return poller;
+}
+
+uint32_t
+spdk_thread_get_pending_work_count(struct spdk_thread *thread)
+{
+	return thread->pending_work_count;
 }
 
 struct spdk_poller *
@@ -1812,6 +1824,10 @@ spdk_poller_unregister(struct spdk_poller **ppoller)
 		}
 	}
 
+	if (poller->period_ticks == 0 && poller->has_pending_work) {
+		poller->has_pending_work = false;
+		thread->pending_work_count--;
+	}
 	/* If the poller was paused, put it on the active_pollers list so that
 	 * its unregistration can be processed by spdk_thread_poll().
 	 */
@@ -1944,6 +1960,16 @@ spdk_poller_get_stats(struct spdk_poller *poller, struct spdk_poller_stats *stat
 {
 	stats->run_count = poller->run_count;
 	stats->busy_count = poller->busy_count;
+}
+
+void
+spdk_poller_set_pending_work(struct spdk_poller *poller, bool has_pending_work)
+{
+	if (has_pending_work != poller->has_pending_work) {
+		poller->thread->pending_work_count +=
+			has_pending_work ? 1 : -1;
+	}
+	poller->has_pending_work = has_pending_work;
 }
 
 struct spdk_poller *
