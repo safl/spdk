@@ -156,6 +156,13 @@ struct spdk_thread {
 	uint8_t				ctx[0];
 };
 
+/*
+ * Assert that spdk_thread struct is 8 byte aligned to ensure ctx
+ * (actually a struct spdk_lw_thread used by reactors), is also
+ * 8-byte aligned for performance.
+ */
+SPDK_STATIC_ASSERT((sizeof(struct spdk_thread)) % 8 == 0, "Incorrect size");
+
 static pthread_mutex_t g_devlist_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static spdk_new_thread_fn g_new_thread_fn = NULL;
