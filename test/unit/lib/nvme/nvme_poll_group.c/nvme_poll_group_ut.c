@@ -48,6 +48,8 @@ DEFINE_STUB(nvme_transport_get_trtype,
 	    (const struct spdk_nvme_transport *transport),
 	    SPDK_NVME_TRANSPORT_PCIE);
 
+DEFINE_STUB(spdk_nvme_ctrlr_qpair_get_fd, int, (struct spdk_nvme_qpair *qpair), 0);
+
 int
 nvme_transport_poll_group_get_stats(struct spdk_nvme_transport_poll_group *tgroup,
 				    struct spdk_nvme_transport_poll_group_stat **stats)
