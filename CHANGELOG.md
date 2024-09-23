@@ -4,6 +4,12 @@
 
 ### nvme
 
+Added new APIs to manage fds for nvme poll group.
+`spdk_nvme_poll_group_create_fd_group()` creates a fd group for the nvme poll group.
+`spdk_nvme_poll_group_get_fd()` to retrieve epoll_fd of the fd group within nvme poll group.
+`spdk_nvme_poll_group_wait()` waits for events on all the fds in the nvme poll group.
+`spdk_nvme_poll_group_add_qpair_fd()` adds fd of nvme qpair to fd group within nvme poll group.
+
 Added `enable_interrupts` field to `spdk_nvme_ctrlr_opts` struct in order to enable interrupts.
 This is applicable only for PCIe transport.
 
