@@ -20,6 +20,7 @@ extern "C" {
 
 #include "spdk/dma.h"
 #include "spdk/env.h"
+#include "spdk/fd_group.h"
 #include "spdk/keyring.h"
 #include "spdk/nvme_spec.h"
 #include "spdk/nvmf_spec.h"
@@ -2955,6 +2956,19 @@ struct spdk_nvme_poll_group *spdk_nvme_poll_group_create(void *ctx,
 		struct spdk_nvme_accel_fn_table *table);
 
 /**
+ * Create a fd_group for nvme poll group.
+ *
+ * This fd_group will have the complete ownership of all the fds for nvme qpairs that are
+ * registered here. As such spdk_fd_group_wait(), can be called on this fd_group to find out
+ * which nvme qpair fd triggered the event.
+ *
+ * \param group The group for which fd group needs to be created.
+ *
+ * \return 0 on success, or -errno in case of failure.
+ */
+int spdk_nvme_poll_group_create_fd_group(struct spdk_nvme_poll_group *group);
+
+/**
  * Get a optimal poll group.
  *
  * \param qpair The qpair to get the optimal poll group.
@@ -2987,6 +3001,40 @@ int spdk_nvme_poll_group_add(struct spdk_nvme_poll_group *group, struct spdk_nvm
  * disconnected in the group, or -EPROTO on a protocol (transport) specific failure.
  */
 int spdk_nvme_poll_group_remove(struct spdk_nvme_poll_group *group, struct spdk_nvme_qpair *qpair);
+
+/**
+ * Add fd of the spdk_nvme_qpair to its poll group.
+ *
+ * The spdk_nvme_poll_group will collectively wait on file descriptors of all the nvme qpairs,
+ * that are part of it. The provided function will be called any time one of specified event from
+ * spdk_event_handler_opts argument gets triggered for the file descriptor of spdk_nvme_qpair.
+ *
+ * \param qpair The qpair whose fd has to be added to its poll group.
+ * \param fn Called each time there are events in event source.
+ * \param arg Function argument for fn.
+ * \param opts Extended event handler option.
+ *
+ * \return 0 on success, or -errno in case of failure.
+ */
+int spdk_nvme_poll_group_add_qpair_fd(struct spdk_nvme_qpair *qpair, spdk_fd_fn fn, void *arg,
+				      struct spdk_event_handler_opts *opts);
+
+/**
+ * Wait for events on the file descriptors of all nvme qpairs in this poll group.
+ *
+ * \param arg Opaque structure for the poll group.
+ * \return number of events processed on success, or -errno in case of failure.
+ */
+int spdk_nvme_poll_group_wait(void *arg);
+
+/**
+ * Return the internal epoll_fd for the fd group of this poll group.
+ *
+ * \param group The poll group which contains the fd group.
+ *
+ * \return epoll_fd for the poll group, -EINVAL if there is no fd group for this poll group.
+ */
+int spdk_nvme_poll_group_get_fd(struct spdk_nvme_poll_group *group);
 
 /**
  * Destroy an empty poll group.

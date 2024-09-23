@@ -27,6 +27,12 @@ Added `enable_interrupts` field to `spdk_nvme_ctrlr_opts` structure in order to 
 This is only applicable for PCIe transport. This is only supported for primary process, and any
 secondary processes attempt to attach to the controller with interrupts will result in a failure.
 
+Added new APIs to manage fds for nvme poll group.
+`spdk_nvme_poll_group_create_fd_group()` creates a fd group for the nvme poll group.
+`spdk_nvme_poll_group_get_fd()` to retrieve epoll_fd of the fd group within nvme poll group.
+`spdk_nvme_poll_group_wait()` waits for events on all the nvme qpair fds in the nvme poll group.
+`spdk_nvme_poll_group_add_qpair_fd()` adds fd of a nvme qpair to fd group within nvme poll group.
+
 Added APIs `spdk_nvme_ctrlr_qpair_get_fd()` and `spdk_nvme_ctrlr_get_admin_qp_fd()` to retrieve the
 fd for an I/O and admin qpair respectively for a given NVMe controller. This is applicable only
 for the PCIe transport.
