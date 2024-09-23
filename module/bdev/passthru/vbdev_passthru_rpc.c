@@ -15,6 +15,7 @@ struct rpc_bdev_passthru_create {
 	char *base_bdev_name;
 	char *name;
 	struct spdk_uuid uuid;
+	bool use_stack;
 };
 
 /* Free the allocated memory resource after the RPC handling. */
@@ -30,6 +31,7 @@ static const struct spdk_json_object_decoder rpc_bdev_passthru_create_decoders[]
 	{"base_bdev_name", offsetof(struct rpc_bdev_passthru_create, base_bdev_name), spdk_json_decode_string},
 	{"name", offsetof(struct rpc_bdev_passthru_create, name), spdk_json_decode_string},
 	{"uuid", offsetof(struct rpc_bdev_passthru_create, uuid), spdk_json_decode_uuid, true},
+	{"use_stack", offsetof(struct rpc_bdev_passthru_create, use_stack), spdk_json_decode_bool, true},
 };
 
 /* Decode the parameters for this RPC method and properly construct the passthru
@@ -52,7 +54,7 @@ rpc_bdev_passthru_create(struct spdk_jsonrpc_request *request,
 		goto cleanup;
 	}
 
-	rc = bdev_passthru_create_disk(req.base_bdev_name, req.name, &req.uuid);
+	rc = bdev_passthru_create_disk(req.base_bdev_name, req.name, &req.uuid, req.use_stack);
 	if (rc != 0) {
 		spdk_jsonrpc_send_error_response(request, rc, spdk_strerror(-rc));
 		goto cleanup;
