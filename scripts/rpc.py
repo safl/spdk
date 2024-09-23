@@ -1242,12 +1242,14 @@ if __name__ == "__main__":
         print_json(rpc.bdev.bdev_passthru_create(args.client,
                                                  base_bdev_name=args.base_bdev_name,
                                                  name=args.name,
-                                                 uuid=args.uuid))
+                                                 uuid=args.uuid,
+                                                 use_stack=args.use_stack))
 
     p = subparsers.add_parser('bdev_passthru_create', help='Add a pass through bdev on existing bdev')
     p.add_argument('-b', '--base-bdev-name', help="Name of the existing bdev", required=True)
     p.add_argument('-p', '--name', help="Name of the pass through bdev", required=True)
     p.add_argument('-u', '--uuid', help="UUID of the bdev")
+    p.add_argument('--use-stack', help="Use bdev_io stack for improved performance", action='store_true')
     p.set_defaults(func=bdev_passthru_create)
 
     def bdev_passthru_delete(args):
