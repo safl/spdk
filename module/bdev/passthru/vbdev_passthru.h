@@ -17,10 +17,11 @@
  * \param bdev_name Bdev on which pass through vbdev will be created.
  * \param vbdev_name Name of the pass through bdev.
  * \param uuid Optional UUID to assign to the pass through bdev.
+ * \param use_stack Use bdev_io stack
  * \return 0 on success, other on failure.
  */
 int bdev_passthru_create_disk(const char *bdev_name, const char *vbdev_name,
-			      const struct spdk_uuid *uuid);
+			      const struct spdk_uuid *uuid, bool use_stack);
 
 /**
  * Delete passthru bdev.
