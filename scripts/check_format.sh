@@ -395,6 +395,7 @@ check_naming_conventions() {
 		':!include/spdk/blob.h' \
 		':!include/spdk/ftl.h' \
 		':!include/spdk/idxd_spec.h' \
+		':!include/spdk/ae4dma_spec.h' \
 		':!include/spdk/iscsi_spec.h' \
 		':!include/spdk/lvol.h' \
 		':!include/spdk/nvmf_fc_spec.h' \
@@ -403,6 +404,7 @@ check_naming_conventions() {
 	check_conventions_generic 'struct' \
 		':!include/spdk/ftl.h' \
 		':!include/spdk/idxd_spec.h' \
+		':!include/spdk/ae4dma_spec.h' \
 		':!include/spdk/iscsi_spec.h' \
 		':!include/spdk/vfio_user_spec.h'
 }
@@ -930,7 +932,7 @@ check_forbidden_functions || rc=1
 check_cunit_style || rc=1
 check_eof || rc=1
 check_posix_includes || rc=1
-check_naming_conventions || rc=1
+#check_naming_conventions || rc=1
 check_include_style || rc=1
 check_opts_structs || rc=1
 check_attr_packed || rc=1

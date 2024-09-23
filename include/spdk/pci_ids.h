@@ -18,6 +18,7 @@ extern "C" {
 
 #define SPDK_PCI_ANY_ID			0xffff
 #define SPDK_PCI_VID_INTEL		0x8086
+#define SPDK_PCI_VID_AMD		0x1022
 #define SPDK_PCI_VID_MEMBLAZE		0x1c5f
 #define SPDK_PCI_VID_SAMSUNG		0x144d
 #define SPDK_PCI_VID_VIRTUALBOX		0x80ee
@@ -120,7 +121,8 @@ extern "C" {
 #define PCI_ROOT_PORT_C_INTEL_ICX	0x347c
 #define PCI_ROOT_PORT_D_INTEL_ICX	0x347d
 
-
+#define PCIE_DEVICE_ID_AMD_AE4DMA_EPYC8XX4 0x14dc
+#define PCIE_DEVICE_ID_AMD_AE4DMA_EPYC9XX4 0x149b
 
 #ifdef __cplusplus
 }
