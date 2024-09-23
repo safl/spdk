@@ -49,6 +49,7 @@ struct bdev_names {
 	char			*vbdev_name;
 	char			*bdev_name;
 	struct spdk_uuid	uuid;
+	bool			use_stack;
 	TAILQ_ENTRY(bdev_names)	link;
 };
 static TAILQ_HEAD(, bdev_names) g_bdev_names = TAILQ_HEAD_INITIALIZER(g_bdev_names);
@@ -58,6 +59,7 @@ struct vbdev_passthru {
 	struct spdk_bdev		*base_bdev; /* the thing we're attaching to */
 	struct spdk_bdev_desc		*base_desc; /* its descriptor we get from open */
 	struct spdk_bdev		pt_bdev;    /* the PT virtual bdev */
+	bool				use_stack;
 	TAILQ_ENTRY(vbdev_passthru)	link;
 	struct spdk_thread		*thread;    /* thread where base device is opened */
 };
@@ -78,6 +80,8 @@ struct pt_io_channel {
  */
 struct passthru_bdev_io {
 	uint8_t test;
+
+	bool use_stack;
 
 	/* bdev related */
 	struct spdk_io_channel *ch;
@@ -149,7 +153,6 @@ _pt_complete_io(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 	struct spdk_bdev_io *orig_io = cb_arg;
 	int status = success ? SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED;
 	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(orig_io);
-
 	/* We setup this value in the submission routine, just showing here that it is
 	 * passed back to us.
 	 */
@@ -163,6 +166,28 @@ _pt_complete_io(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 	 */
 	spdk_bdev_io_complete(orig_io, status);
 	spdk_bdev_free_io(bdev_io);
+}
+
+static void
+_pt_complete_io_stack(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
+{
+	struct spdk_bdev_io *orig_io = cb_arg;
+	int status = success ? SPDK_BDEV_IO_STATUS_SUCCESS : SPDK_BDEV_IO_STATUS_FAILED;
+	struct passthru_bdev_io *io_ctx;
+
+	assert(bdev_io == orig_io);
+	spdk_bdev_io_stack_pop(orig_io);
+	io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(orig_io);
+
+	/* We setup this value in the submission routine, just showing here that it is
+	 * passed back to us.
+	 */
+	if (io_ctx->test != 0x5a) {
+		SPDK_ERRLOG("Error, original IO device_ctx is wrong! 0x%x\n",
+			    io_ctx->test);
+	}
+
+	spdk_bdev_io_complete(orig_io, status);
 }
 
 static void
@@ -246,11 +271,17 @@ pt_read_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io, boo
 		return;
 	}
 
-	pt_init_ext_io_opts(bdev_io, &io_opts);
-	rc = spdk_bdev_readv_blocks_ext(pt_node->base_desc, pt_ch->base_ch, bdev_io->u.bdev.iovs,
-					bdev_io->u.bdev.iovcnt, bdev_io->u.bdev.offset_blocks,
-					bdev_io->u.bdev.num_blocks, _pt_complete_io,
-					bdev_io, &io_opts);
+	if (io_ctx->use_stack) {
+		spdk_bdev_io_stack_push(bdev_io);
+		rc = spdk_bdev_io_submit(bdev_io, pt_node->base_desc, pt_ch->base_ch,
+					 _pt_complete_io_stack, bdev_io);
+	} else {
+		pt_init_ext_io_opts(bdev_io, &io_opts);
+		rc = spdk_bdev_readv_blocks_ext(pt_node->base_desc, pt_ch->base_ch, bdev_io->u.bdev.iovs,
+						bdev_io->u.bdev.iovcnt, bdev_io->u.bdev.offset_blocks,
+						bdev_io->u.bdev.num_blocks, _pt_complete_io,
+						bdev_io, &io_opts);
+	}
 	if (rc != 0) {
 		if (rc == -ENOMEM) {
 			SPDK_ERRLOG("No memory, start to queue io for passthru.\n");
@@ -260,6 +291,48 @@ pt_read_get_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io, boo
 			SPDK_ERRLOG("ERROR on bdev_io submission!\n");
 			spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
 		}
+	}
+}
+
+static void
+vbdev_passthru_submit_request_stack(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
+{
+	struct vbdev_passthru *pt_node = SPDK_CONTAINEROF(bdev_io->bdev, struct vbdev_passthru, pt_bdev);
+	struct pt_io_channel *pt_ch = spdk_io_channel_get_ctx(ch);
+	struct passthru_bdev_io *io_ctx = (struct passthru_bdev_io *)spdk_bdev_io_to_ctx(bdev_io);
+	int rc = 0;
+
+	io_ctx->use_stack = true;
+
+	switch (bdev_io->type) {
+	case SPDK_BDEV_IO_TYPE_READ:
+		spdk_bdev_io_get_buf(bdev_io, pt_read_get_buf_cb,
+				     bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen);
+		break;
+	case SPDK_BDEV_IO_TYPE_WRITE:
+	case SPDK_BDEV_IO_TYPE_WRITE_ZEROES:
+	case SPDK_BDEV_IO_TYPE_UNMAP:
+	case SPDK_BDEV_IO_TYPE_FLUSH:
+	case SPDK_BDEV_IO_TYPE_RESET:
+	case SPDK_BDEV_IO_TYPE_ZCOPY:
+	case SPDK_BDEV_IO_TYPE_ABORT:
+	case SPDK_BDEV_IO_TYPE_COPY:
+		spdk_bdev_io_stack_push(bdev_io);
+		rc = spdk_bdev_io_submit(bdev_io, pt_node->base_desc, pt_ch->base_ch,
+					 _pt_complete_io_stack, bdev_io);
+		break;
+	default:
+		SPDK_ERRLOG("passthru: unknown I/O type %d\n", bdev_io->type);
+		spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
+		return;
+	}
+	if (rc != 0) {
+		/* Currently spdk_bdev_io_submit() always returns 0. This path
+		 * does not need to allocate a bdev_io, so -ENOMEM handling
+		 * is not required.
+		 */
+		SPDK_ERRLOG("ERROR on bdev_io submission!\n");
+		spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
 	}
 }
 
@@ -281,6 +354,12 @@ vbdev_passthru_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *b
 	 * demonstrate.
 	 */
 	io_ctx->test = 0x5a;
+	io_ctx->use_stack = pt_node->use_stack;
+
+	if (pt_node->use_stack) {
+		vbdev_passthru_submit_request_stack(ch, bdev_io);
+		return;
+	}
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_READ:
@@ -456,7 +535,7 @@ pt_bdev_ch_destroy_cb(void *io_device, void *ctx_buf)
  * on the global list. */
 static int
 vbdev_passthru_insert_name(const char *bdev_name, const char *vbdev_name,
-			   const struct spdk_uuid *uuid)
+			   const struct spdk_uuid *uuid, bool use_stack)
 {
 	struct bdev_names *name;
 
@@ -489,6 +568,7 @@ vbdev_passthru_insert_name(const char *bdev_name, const char *vbdev_name,
 	}
 
 	spdk_uuid_copy(&name->uuid, uuid);
+	name->use_stack = use_stack;
 	TAILQ_INSERT_TAIL(&g_bdev_names, name, link);
 
 	return 0;
@@ -636,6 +716,7 @@ vbdev_passthru_register(const char *bdev_name)
 
 		bdev = spdk_bdev_desc_get_bdev(pt_node->base_desc);
 		pt_node->base_bdev = bdev;
+		pt_node->use_stack = name->use_stack;
 
 		if (!spdk_uuid_is_null(&name->uuid)) {
 			/* Use the configured UUID */
@@ -716,14 +797,14 @@ vbdev_passthru_register(const char *bdev_name)
 /* Create the passthru disk from the given bdev and vbdev name. */
 int
 bdev_passthru_create_disk(const char *bdev_name, const char *vbdev_name,
-			  const struct spdk_uuid *uuid)
+			  const struct spdk_uuid *uuid, bool use_stack)
 {
 	int rc;
 
 	/* Insert the bdev name into our global name list even if it doesn't exist yet,
 	 * it may show up soon...
 	 */
-	rc = vbdev_passthru_insert_name(bdev_name, vbdev_name, uuid);
+	rc = vbdev_passthru_insert_name(bdev_name, vbdev_name, uuid, use_stack);
 	if (rc) {
 		return rc;
 	}
