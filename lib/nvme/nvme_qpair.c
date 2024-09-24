@@ -937,6 +937,11 @@ nvme_qpair_deinit(struct spdk_nvme_qpair *qpair)
 	}
 
 	spdk_free(qpair->req_buf);
+	if (qpair->poll_status != NULL) {
+		spdk_free(qpair->poll_status->dma_data);
+		free(qpair->poll_status);
+		qpair->poll_status = NULL;
+	}
 }
 
 static inline int
