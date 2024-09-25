@@ -25,6 +25,8 @@ static pthread_mutex_t g_endpoint_lock = PTHREAD_MUTEX_INITIALIZER;
 static TAILQ_HEAD(, spdk_vfu_endpoint) g_endpoint = TAILQ_HEAD_INITIALIZER(g_endpoint);
 static TAILQ_HEAD(, tgt_pci_device_ops) g_pci_device_ops = TAILQ_HEAD_INITIALIZER(g_pci_device_ops);
 static char g_endpoint_path_dirname[PATH_MAX] = "";
+static uint32_t g_fini_endpoint_cnt = 0;
+static spdk_vfu_fini_cb g_fini_cb = NULL;
 
 static struct spdk_vfu_endpoint_ops *
 tgt_get_pci_device_ops(const char *device_type_name)
@@ -539,6 +541,7 @@ static void
 tgt_endpoint_thread_exit(void *arg1)
 {
 	struct spdk_vfu_endpoint *endpoint = arg1;
+	int res;
 
 	spdk_poller_unregister(&endpoint->accept_poller);
 	spdk_poller_unregister(&endpoint->vfu_ctx_poller);
@@ -550,10 +553,32 @@ tgt_endpoint_thread_exit(void *arg1)
 
 	if (endpoint->vfu_ctx) {
 		vfu_destroy_ctx(endpoint->vfu_ctx);
+		endpoint->vfu_ctx = NULL;
 	}
 
-	endpoint->ops.destruct(endpoint);
+	res = endpoint->ops.destruct(endpoint);
+	if (res == -EAGAIN) {
+		spdk_thread_send_msg(endpoint->thread, tgt_endpoint_thread_exit, endpoint);
+		return;
+	} else if (res) {
+		/* We're ignoring this error for now as we have nothing to do with it */
+		SPDK_ERRLOG("Endpoint destruct failed with %d\n", res);
+	}
+
 	free(endpoint);
+
+	if (g_fini_cb) { /* called due to spdk_vfu_fini() */
+		uint32_t endpoint_cnt;
+		pthread_mutex_lock(&g_endpoint_lock);
+		g_fini_endpoint_cnt--;
+		endpoint_cnt = g_fini_endpoint_cnt;
+		pthread_mutex_unlock(&g_endpoint_lock);
+
+		if (!endpoint_cnt) {
+			g_fini_cb();
+			g_fini_cb = NULL;
+		}
+	}
 
 	spdk_thread_exit(spdk_get_thread());
 }
@@ -770,6 +795,8 @@ spdk_vfu_fini(spdk_vfu_fini_cb fini_cb)
 	struct spdk_vfu_endpoint *endpoint, *tmp;
 	struct tgt_pci_device_ops *ops, *ops_tmp;
 
+	g_fini_cb = fini_cb;
+
 	pthread_mutex_lock(&g_endpoint_lock);
 	TAILQ_FOREACH_SAFE(ops, &g_pci_device_ops, link, ops_tmp) {
 		TAILQ_REMOVE(&g_pci_device_ops, ops, link);
@@ -778,10 +805,13 @@ spdk_vfu_fini(spdk_vfu_fini_cb fini_cb)
 
 	TAILQ_FOREACH_SAFE(endpoint, &g_endpoint, link, tmp) {
 		TAILQ_REMOVE(&g_endpoint, endpoint, link);
+		g_fini_endpoint_cnt++;
 		spdk_thread_send_msg(endpoint->thread, tgt_endpoint_thread_exit, endpoint);
 	}
 	pthread_mutex_unlock(&g_endpoint_lock);
 
-	fini_cb();
+	if (!g_fini_endpoint_cnt) {
+		fini_cb();
+	}
 }
 SPDK_LOG_REGISTER_COMPONENT(vfu)
