@@ -108,8 +108,19 @@ struct spdk_nvmf_subsystem_listener {
 struct spdk_nvmf_referral {
 	/* Discovery Log Page Entry for this referral */
 	struct spdk_nvmf_discovery_log_page_entry entry;
+	/* Make referral visible to controllers of these hosts */
+	TAILQ_HEAD(, spdk_nvmf_host) hosts;
+	/* This mutex is used to protect fields that aren't touched on the I/O path (e.g. it's
+	 * needed for handling things like the CONNECT command) instead of requiring the subsystem
+	 * to be paused.  It makes it possible to modify those fields (e.g. add/remove hosts)
+	 * without affecting outstanding I/O requests.
+	 */
+	pthread_mutex_t					mutex;
 	/* Transport ID */
 	struct spdk_nvme_transport_id trid;
+	struct spdk_nvmf_tgt				*tgt;
+	/* Protected against concurrent access by ->mutex */
+	bool						allow_any_host;
 	TAILQ_ENTRY(spdk_nvmf_referral) link;
 };
 

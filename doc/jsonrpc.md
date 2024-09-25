@@ -9201,7 +9201,7 @@ Example response:
 }
 ~~~
 
-### nvmf_discovery_add_referral  method {#rpc_nvmf_discovery_add_referral}
+### nvmf_discovery_add_referral  method {#rpc_nvmf_add_referral}
 
 Add a discovery service referral to an NVMe-oF target. If a referral with the given
 parameters already exists, no action will be taken.
@@ -9213,6 +9213,7 @@ Name                    | Optional | Type        | Description
 tgt_name                | Optional | string      | Parent NVMe-oF target name.
 address                 | Required | object      | @ref rpc_nvmf_listen_address object
 secure_channel          | Optional | bool        | The connection to that discovery subsystem requires a secure channel
+allow_any_host          | Optional | boolean     | Allow any host (`true`) or enforce allowed host list (`false`). Default: `false`.
 
 #### Example
 
@@ -9224,11 +9225,12 @@ Example request:
   "id": 1,
   "method": "nvmf_discovery_add_referral",
   "params": {
+    "allow_any_host": false
     "address": {
       "trtype": "RDMA",
       "adrfam": "IPv4",
       "traddr": "192.168.0.123",
-      "trsvcid": "4420"
+      "trsvcid": "4420",
     }
   }
 }
@@ -9318,9 +9320,93 @@ Example response:
         "adrfam": "IPv4",
         "traddr": "192.168.0.123",
         "trsvcid": "4420"
-      }
+      },
+    "secure_channel": false,
+    "subnqn": "nqn.2014-08.org.nvmexpress.discovery",
+    "allow_any_host": false
     }
   ]
+}
+~~~
+
+### nvmf_discovery_referral_add_host method {#rpc_nvmf_discovery_referral_add_host}
+
+Add a host NQN to the list of allowed hosts.  Adding an already allowed host will result in an
+error.
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+nqn                     | Required | string      | Referral Subsystem NQN
+host                    | Required | string      | Host NQN to add to the list of allowed host NQNs
+tgt_name                | Optional | string      | Parent NVMe-oF target name.
+psk                     | Optional | string      | Path to a file containing PSK for TLS connection
+dhchap_key              | Optional | string      | DH-HMAC-CHAP key name.
+dhchap_ctrlr_key        | Optional | string      | DH-HMAC-CHAP controller key name.
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "nvmf_discovery_referral_add_host",
+  "params": {
+    "nqn": "nqn.2016-06.io.spdk:cnode1",
+    "host": "nqn.2016-06.io.spdk:host1",
+    "dhchap_key": "key0"
+  }
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
+### nvmf_discovery_referral_remove_host method {#rpc_nvmf_discovery_referral_remove_host}
+
+Remove a host NQN from the list of allowed hosts.
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+nqn                     | Required | string      | Referral Subsystem NQN
+host                    | Required | string      | Host NQN to remove from the list of allowed host NQNs
+tgt_name                | Optional | string      | Parent NVMe-oF target name.
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "nvmf_discovery_referral_remove_host",
+  "params": {
+    "nqn": "nqn.2016-06.io.spdk:cnode1",
+    "host": "nqn.2016-06.io.spdk:host1"
+  }
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
 }
 ~~~
 

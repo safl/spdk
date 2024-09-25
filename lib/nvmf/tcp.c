@@ -703,6 +703,12 @@ static int nvmf_tcp_accept(void *ctx);
 
 static void nvmf_tcp_accept_cb(void *ctx, struct spdk_sock_group *group, struct spdk_sock *sock);
 
+static void
+nvmf_tcp_poller_set_interrupt_mode_nop(struct spdk_poller *poller, void *cb_arg,
+				       bool interrupt_mode)
+{
+}
+
 static struct spdk_nvmf_transport *
 nvmf_tcp_create(struct spdk_nvmf_transport_opts *opts)
 {
@@ -833,7 +839,8 @@ nvmf_tcp_create(struct spdk_nvmf_transport_opts *opts)
 		return NULL;
 	}
 
-	spdk_poller_register_interrupt(ttransport->accept_poller, NULL, NULL);
+	spdk_poller_register_interrupt(ttransport->accept_poller, nvmf_tcp_poller_set_interrupt_mode_nop,
+				       NULL);
 
 	ttransport->listen_sock_group = spdk_sock_group_create(NULL);
 	if (ttransport->listen_sock_group == NULL) {
@@ -3740,9 +3747,17 @@ struct tcp_subsystem_add_host_opts {
 	char *psk;
 };
 
+//struct tcp_referral_add_host_opts {
+//	char *psk;
+//};
+
 static const struct spdk_json_object_decoder tcp_subsystem_add_host_opts_decoder[] = {
 	{"psk", offsetof(struct tcp_subsystem_add_host_opts, psk), spdk_json_decode_string, true},
 };
+
+//static const struct spdk_json_object_decoder tcp_referral_add_host_opts_decoder[] = {
+//	{"psk", offsetof(struct tcp_referral_add_host_opts, psk), spdk_json_decode_string, true},
+//};
 
 static int
 nvmf_tcp_subsystem_add_host(struct spdk_nvmf_transport *transport,
@@ -3928,6 +3943,210 @@ nvmf_tcp_subsystem_dump_host(struct spdk_nvmf_transport *transport,
 	}
 }
 
+//static int
+//nvmf_tcp_referral_add_host(struct spdk_nvmf_transport *transport,
+//			   const struct spdk_nvmf_referral *referral,
+//			   const char *hostnqn,
+//			   const struct spdk_json_val *transport_specific)
+//{
+//	struct tcp_referral_add_host_opts opts;
+//	struct spdk_nvmf_tcp_transport *ttransport;
+//	struct tcp_psk_entry *tmp, *entry = NULL;
+//	uint8_t psk_configured[SPDK_TLS_PSK_MAX_LEN] = {};
+//	char psk_interchange[SPDK_TLS_PSK_MAX_LEN + 1] = {};
+//	uint8_t tls_cipher_suite;
+//	int rc = 0;
+//	uint8_t psk_retained_hash;
+//	uint64_t psk_configured_size;
+//
+//	if (transport_specific == NULL) {
+//		return 0;
+//	}
+//
+//	assert(transport != NULL);
+//	assert(referral != NULL);
+//
+//	memset(&opts, 0, sizeof(opts));
+//
+//	/* Decode PSK (either name of a key or file path) */
+//	if (spdk_json_decode_object_relaxed(transport_specific, tcp_referral_add_host_opts_decoder,
+//					    SPDK_COUNTOF(tcp_referral_add_host_opts_decoder), &opts)) {
+//		SPDK_ERRLOG("spdk_json_decode_object failed\n");
+//		return -EINVAL;
+//	}
+//
+//	if (opts.psk == NULL) {
+//		return 0;
+//	}
+//
+//	entry = calloc(1, sizeof(struct tcp_psk_entry));
+//	if (entry == NULL) {
+//		SPDK_ERRLOG("Unable to allocate memory for PSK entry!\n");
+//		rc = -ENOMEM;
+//		goto end;
+//	}
+//
+//	entry->key = spdk_keyring_get_key(opts.psk);
+//	if (entry->key != NULL) {
+//		rc = spdk_key_get_key(entry->key, psk_interchange, SPDK_TLS_PSK_MAX_LEN);
+//		if (rc < 0) {
+//			SPDK_ERRLOG("Failed to retrieve PSK '%s'\n", opts.psk);
+//			rc = -EINVAL;
+//			goto end;
+//		}
+//	} else {
+//		if (strlen(opts.psk) >= sizeof(entry->psk)) {
+//			SPDK_ERRLOG("PSK path too long\n");
+//			rc = -EINVAL;
+//			goto end;
+//		}
+//
+//		rc = tcp_load_psk(opts.psk, psk_interchange, SPDK_TLS_PSK_MAX_LEN);
+//		if (rc) {
+//			SPDK_ERRLOG("Could not retrieve PSK from file\n");
+//			goto end;
+//		}
+//
+//		SPDK_LOG_DEPRECATED(nvmf_tcp_psk_path);
+//	}
+//
+//	/* Parse PSK interchange to get length of base64 encoded data.
+//	 * This is then used to decide which cipher suite should be used
+//	 * to generate PSK identity and TLS PSK later on. */
+//	rc = nvme_tcp_parse_interchange_psk(psk_interchange, psk_configured, sizeof(psk_configured),
+//					    &psk_configured_size, &psk_retained_hash);
+//	if (rc < 0) {
+//		SPDK_ERRLOG("Failed to parse PSK interchange!\n");
+//		goto end;
+//	}
+//
+//	/* The Base64 string encodes the configured PSK (32 or 48 bytes binary).
+//	 * This check also ensures that psk_configured_size is smaller than
+//	 * psk_retained buffer size. */
+//	if (psk_configured_size == SHA256_DIGEST_LENGTH) {
+//		tls_cipher_suite = NVME_TCP_CIPHER_AES_128_GCM_SHA256;
+//	} else if (psk_configured_size == SHA384_DIGEST_LENGTH) {
+//		tls_cipher_suite = NVME_TCP_CIPHER_AES_256_GCM_SHA384;
+//	} else {
+//		SPDK_ERRLOG("Unrecognized cipher suite!\n");
+//		rc = -EINVAL;
+//		goto end;
+//	}
+//
+//	ttransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_tcp_transport, transport);
+//	/* Generate PSK identity. */
+//	rc = nvme_tcp_generate_psk_identity(entry->pskid, sizeof(entry->pskid), hostnqn,
+//					    referral->trid.subnqn, tls_cipher_suite);
+//	if (rc) {
+//		rc = -EINVAL;
+//		goto end;
+//	}
+//	/* Check if PSK identity entry already exists. */
+//	TAILQ_FOREACH(tmp, &ttransport->psks, link) {
+//		if (strncmp(tmp->pskid, entry->pskid, NVMF_PSK_IDENTITY_LEN) == 0) {
+//			SPDK_ERRLOG("Given PSK identity: %s entry already exists!\n", entry->pskid);
+//			rc = -EEXIST;
+//			goto end;
+//		}
+//	}
+//
+//	if (snprintf(entry->hostnqn, sizeof(entry->hostnqn), "%s", hostnqn) < 0) {
+//		SPDK_ERRLOG("Could not write hostnqn string!\n");
+//		rc = -EINVAL;
+//		goto end;
+//	}
+//	if (snprintf(entry->subnqn, sizeof(entry->subnqn), "%s", referral->trid.subnqn) < 0) {
+//		SPDK_ERRLOG("Could not write subnqn string!\n");
+//		rc = -EINVAL;
+//		goto end;
+//	}
+//
+//	entry->tls_cipher_suite = tls_cipher_suite;
+//
+//	/* No hash indicates that Configured PSK must be used as Retained PSK. */
+//	if (psk_retained_hash == NVME_TCP_HASH_ALGORITHM_NONE) {
+//		/* Psk configured is either 32 or 48 bytes long. */
+//		memcpy(entry->psk, psk_configured, psk_configured_size);
+//		entry->psk_size = psk_configured_size;
+//	} else {
+//		/* Derive retained PSK. */
+//		rc = nvme_tcp_derive_retained_psk(psk_configured, psk_configured_size, hostnqn, entry->psk,
+//						  SPDK_TLS_PSK_MAX_LEN, psk_retained_hash);
+//		if (rc < 0) {
+//			SPDK_ERRLOG("Unable to derive retained PSK!\n");
+//			goto end;
+//		}
+//		entry->psk_size = rc;
+//	}
+//
+//	if (entry->key == NULL) {
+//		rc = snprintf(entry->psk_path, sizeof(entry->psk_path), "%s", opts.psk);
+//		if (rc < 0 || (size_t)rc >= sizeof(entry->psk_path)) {
+//			SPDK_ERRLOG("Could not save PSK path!\n");
+//			rc = -ENAMETOOLONG;
+//			goto end;
+//		}
+//	}
+//
+//	TAILQ_INSERT_TAIL(&ttransport->psks, entry, link);
+//	rc = 0;
+//
+//end:
+//	spdk_memset_s(psk_configured, sizeof(psk_configured), 0, sizeof(psk_configured));
+//	spdk_memset_s(psk_interchange, sizeof(psk_interchange), 0, sizeof(psk_interchange));
+//
+//	free(opts.psk);
+//	if (rc != 0) {
+//		nvmf_tcp_free_psk_entry(entry);
+//	}
+//
+//	return rc;
+//}
+//
+//static void
+//nvmf_tcp_referral_remove_host(struct spdk_nvmf_transport *transport,
+//			      const struct spdk_nvmf_referral *referral,
+//			      const char *hostnqn)
+//{
+//	struct spdk_nvmf_tcp_transport *ttransport;
+//	struct tcp_psk_entry *entry, *tmp;
+//
+//	assert(transport != NULL);
+//	assert(referral != NULL);
+//
+//	ttransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_tcp_transport, transport);
+//	TAILQ_FOREACH_SAFE(entry, &ttransport->psks, link, tmp) {
+//		if ((strncmp(entry->hostnqn, hostnqn, SPDK_NVMF_NQN_MAX_LEN)) == 0 &&
+//		    (strncmp(entry->subnqn, referral->trid.subnqn, SPDK_NVMF_NQN_MAX_LEN)) == 0) {
+//			TAILQ_REMOVE(&ttransport->psks, entry, link);
+//			nvmf_tcp_free_psk_entry(entry);
+//			break;
+//		}
+//	}
+//}
+
+//static void
+//nvmf_tcp_referral_dump_host(struct spdk_nvmf_transport *transport,
+//			    const struct spdk_nvmf_referral *referral, const char *hostnqn,
+//			    struct spdk_json_write_ctx *w)
+//{
+//	struct spdk_nvmf_tcp_transport *ttransport;
+//	struct tcp_psk_entry *entry;
+//
+//	assert(transport != NULL);
+//	assert(referral != NULL);
+//
+//	ttransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_tcp_transport, transport);
+//	TAILQ_FOREACH(entry, &ttransport->psks, link) {
+//		if ((strncmp(entry->hostnqn, hostnqn, SPDK_NVMF_NQN_MAX_LEN)) == 0 &&
+//		    (strncmp(entry->subnqn, referral->trid.subnqn, SPDK_NVMF_NQN_MAX_LEN)) == 0) {
+//			spdk_json_write_named_string(w, "psk", entry->key ?
+//						     spdk_key_get_name(entry->key) : entry->psk_path);
+//			break;
+//		}
+//	}
+//}
+
 static void
 nvmf_tcp_opts_init(struct spdk_nvmf_transport_opts *opts)
 {
@@ -3976,6 +4195,9 @@ const struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp = {
 	.subsystem_add_host = nvmf_tcp_subsystem_add_host,
 	.subsystem_remove_host = nvmf_tcp_subsystem_remove_host,
 	.subsystem_dump_host = nvmf_tcp_subsystem_dump_host,
+//	.referral_add_host = nvmf_tcp_referral_add_host,
+//	.referral_remove_host = nvmf_tcp_referral_remove_host,
+//	.referral_dump_host = nvmf_tcp_referral_dump_host,
 };
 
 SPDK_NVMF_TRANSPORT_REGISTER(tcp, &spdk_nvmf_transport_tcp);

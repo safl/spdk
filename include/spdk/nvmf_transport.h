@@ -492,6 +492,32 @@ struct spdk_nvmf_transport_ops {
 	void (*subsystem_dump_host)(struct spdk_nvmf_transport *transport,
 				    const struct spdk_nvmf_subsystem *subsystem,
 				    const char *hostnqn, struct spdk_json_write_ctx *w);
+	/*
+	 * A notification that a referral has been configured to allow access
+	 * from the given host.
+	 * This callback is optional and not all transports need to implement it.
+	 */
+	int (*referral_add_host)(struct spdk_nvmf_transport *transport,
+				 const struct spdk_nvmf_referral *referral,
+				 const char *hostnqn,
+				 const struct spdk_json_val *transport_specific);
+
+	/*
+	 * A notification that a referral is no longer configured to allow access
+	 * from the given host.
+	 * This callback is optional and not all transports need to implement it.
+	 */
+	void (*referral_remove_host)(struct spdk_nvmf_transport *transport,
+				     const struct spdk_nvmf_referral *referral,
+				     const char *hostnqn);
+
+	/*
+	 * A callback used to dump referral's host data for a specific transport.
+	 * This callback is optional and not all transports need to implement it.
+	 */
+	void (*referral_dump_host)(struct spdk_nvmf_transport *transport,
+				   const struct spdk_nvmf_referral *referral,
+				   const char *hostnqn, struct spdk_json_write_ctx *w);
 };
 
 /**

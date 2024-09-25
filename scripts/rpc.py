@@ -2767,9 +2767,9 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-p', '--tgt-name', help='The name of the parent NVMe-oF target (optional)', type=str)
     p.add_argument('-f', '--adrfam', help='NVMe-oF transport adrfam: e.g., ipv4, ipv6, ib, fc, intra_host')
     p.add_argument('-s', '--trsvcid', help='NVMe-oF transport service id: e.g., a port number (required for RDMA or TCP)')
-    p.add_argument('-k', '--secure-channel', help='The connection to that discovery subsystem requires a secure channel',
-                   action="store_true")
+    p.add_argument('-k', '--secure-channel', help='This connection to discovery subsystem requires a secure channel', action="store_true")
     p.add_argument('-n', '--subnqn', help='Subsystem NQN')
+    p.add_argument('-ah', '--allow-any-host', help='Allow any host to connect (dont enforce allowed host NQN list)', action='store_true')
     p.set_defaults(func=nvmf_discovery_add_referral)
 
     def nvmf_discovery_remove_referral(args):
@@ -2798,6 +2798,36 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
                               help='Display discovery subsystem referrals of an NVMe-oF target')
     p.add_argument('-t', '--tgt-name', help='The name of the parent NVMe-oF target (optional)', type=str)
     p.set_defaults(func=nvmf_discovery_get_referrals)
+
+    def nvmf_discovery_referral_add_host(args):
+        rpc.nvmf.nvmf_discovery_referral_add_host(args.client,
+                                                  nqn=args.nqn,
+                                                  host=args.host,
+                                                  tgt_name=args.tgt_name,
+                                                  psk=args.psk,
+                                                  dhchap_key=args.dhchap_key,
+                                                  dhchap_ctrlr_key=args.dhchap_ctrlr_key)
+
+    p = subparsers.add_parser('nvmf_discovery_referral_add_host', help='Add a host to an NVMe-oF referral subsystem')
+    p.add_argument('nqn', help='NVMe-oF referral subsystem NQN')
+    p.add_argument('host', help='Host NQN to allow')
+    p.add_argument('-t', '--tgt-name', help='The name of the parent NVMe-oF target (optional)', type=str)
+    p.add_argument('--psk', help='Path to PSK file for TLS authentication (optional). Only applicable for TCP transport.', type=str)
+    p.add_argument('--dhchap-key', help='DH-HMAC-CHAP key name (optional)')
+    p.add_argument('--dhchap-ctrlr-key', help='DH-HMAC-CHAP controller key name (optional)')
+    p.set_defaults(func=nvmf_discovery_referral_add_host)
+
+    def nvmf_discovery_referral_remove_host(args):
+        rpc.nvmf.nvmf_discovery_referral_remove_host(args.client,
+                                                     nqn=args.nqn,
+                                                     host=args.host,
+                                                     tgt_name=args.tgt_name)
+
+    p = subparsers.add_parser('nvmf_discovery_referral_remove_host', help='Remove a host from an NVMe-oF referral subsystem')
+    p.add_argument('nqn', help='NVMe-oF referral subsystem NQN')
+    p.add_argument('host', help='Host NQN to remove')
+    p.add_argument('-t', '--tgt-name', help='The name of the parent NVMe-oF target (optional)', type=str)
+    p.set_defaults(func=nvmf_discovery_referral_remove_host)
 
     def nvmf_subsystem_add_ns(args):
         rpc.nvmf.nvmf_subsystem_add_ns(**vars(args))

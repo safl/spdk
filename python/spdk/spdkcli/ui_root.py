@@ -342,6 +342,14 @@ class UIRoot(UINode):
         rpc.nvmf.nvmf_discovery_remove_referral(self.client, **kwargs)
 
     @verbose
+    def nvmf_discovery_referral_add_host(self, **kwargs):
+        rpc.nvmf.nvmf_discovery_referral_add_host(self.client, **kwargs)
+
+    @verbose
+    def nvmf_discovery_referral_remove_host(self, **kwargs):
+        rpc.nvmf.nvmf_discovery_referral_remove_host(self.client, **kwargs)
+
+    @verbose
     def create_nvmf_subsystem(self, **kwargs):
         rpc.nvmf.nvmf_create_subsystem(self.client, **kwargs)
 
