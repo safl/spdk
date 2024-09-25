@@ -1024,6 +1024,7 @@ struct nvmf_rpc_referral_ctx {
 	struct rpc_listen_address	address;
 	bool				secure_channel;
 	char				*subnqn;
+	bool                            allow_any_host;
 };
 
 static const struct spdk_json_object_decoder nvmf_rpc_referral_decoder[] = {
@@ -1031,6 +1032,7 @@ static const struct spdk_json_object_decoder nvmf_rpc_referral_decoder[] = {
 	{"tgt_name", offsetof(struct nvmf_rpc_referral_ctx, tgt_name), spdk_json_decode_string, true},
 	{"secure_channel", offsetof(struct nvmf_rpc_referral_ctx, secure_channel), spdk_json_decode_bool, true},
 	{"subnqn", offsetof(struct nvmf_rpc_referral_ctx, subnqn), spdk_json_decode_string, true},
+	{"allow_any_host", offsetof(struct nvmf_rpc_referral_ctx, allow_any_host), spdk_json_decode_bool, true},
 };
 
 static void
@@ -1049,6 +1051,7 @@ rpc_nvmf_add_referral(struct spdk_jsonrpc_request *request,
 	struct spdk_nvme_transport_id trid = {};
 	struct spdk_nvmf_tgt *tgt;
 	struct spdk_nvmf_referral_opts opts = {};
+
 	int rc;
 
 	if (spdk_json_decode_object_relaxed(params, nvmf_rpc_referral_decoder,
@@ -1099,6 +1102,8 @@ rpc_nvmf_add_referral(struct spdk_jsonrpc_request *request,
 	opts.size = SPDK_SIZEOF(&opts, secure_channel);
 	opts.trid = trid;
 	opts.secure_channel = ctx.secure_channel;
+	opts.size = SPDK_SIZEOF(&opts, allow_any_host);
+	opts.allow_any_host = ctx.allow_any_host;
 
 	rc = spdk_nvmf_tgt_add_referral(tgt, &opts);
 	if (rc != 0) {
@@ -1163,6 +1168,7 @@ rpc_nvmf_remove_referral(struct spdk_jsonrpc_request *request,
 
 	opts.size = SPDK_SIZEOF(&opts, secure_channel);
 	opts.trid = trid;
+	opts.size = SPDK_SIZEOF(&opts, allow_any_host);
 
 	if (spdk_nvmf_tgt_remove_referral(tgt, &opts)) {
 		SPDK_ERRLOG("Failed to remove referral.\n");
@@ -1192,6 +1198,8 @@ dump_nvmf_referral(struct spdk_json_write_ctx *w,
 	spdk_json_write_named_bool(w, "secure_channel",
 				   referral->entry.treq.secure_channel == SPDK_NVMF_TREQ_SECURE_CHANNEL_REQUIRED);
 	spdk_json_write_named_string(w, "subnqn", referral->trid.subnqn);
+	spdk_json_write_named_bool(w, "allow_any_host",
+				   spdk_nvmf_referral_get_allow_any_host(referral));
 
 	spdk_json_write_object_end(w);
 }
@@ -1966,6 +1974,14 @@ static const struct spdk_json_object_decoder nvmf_rpc_subsystem_host_decoder[] =
 	{"dhchap_ctrlr_key", offsetof(struct nvmf_rpc_host_ctx, dhchap_ctrlr_key), spdk_json_decode_string, true},
 };
 
+static const struct spdk_json_object_decoder nvmf_rpc_referral_host_decoder[] = {
+	{"nqn", offsetof(struct nvmf_rpc_host_ctx, nqn), spdk_json_decode_string},
+	{"host", offsetof(struct nvmf_rpc_host_ctx, host), spdk_json_decode_string},
+	{"tgt_name", offsetof(struct nvmf_rpc_host_ctx, tgt_name), spdk_json_decode_string, true},
+	{"dhchap_key", offsetof(struct nvmf_rpc_host_ctx, dhchap_key), spdk_json_decode_string, true},
+	{"dhchap_ctrlr_key", offsetof(struct nvmf_rpc_host_ctx, dhchap_ctrlr_key), spdk_json_decode_string, true},
+};
+
 static void
 nvmf_rpc_host_ctx_free(struct nvmf_rpc_host_ctx *ctx)
 {
@@ -2126,6 +2142,142 @@ rpc_nvmf_subsystem_remove_host(struct spdk_jsonrpc_request *request,
 }
 SPDK_RPC_REGISTER("nvmf_subsystem_remove_host", rpc_nvmf_subsystem_remove_host,
 		  SPDK_RPC_RUNTIME)
+
+static void
+rpc_nvmf_discovery_referral_add_host(struct spdk_jsonrpc_request *request,
+				     const struct spdk_json_val *params)
+{
+	struct nvmf_rpc_host_ctx ctx = {};
+	struct spdk_nvmf_referral *referral;
+	struct spdk_nvmf_host_opts opts = {};
+	struct spdk_nvmf_tgt *tgt;
+	struct spdk_key *key = NULL, *ckey = NULL;
+	int rc;
+
+	if (spdk_json_decode_object_relaxed(params, nvmf_rpc_referral_host_decoder,
+					    SPDK_COUNTOF(nvmf_rpc_referral_host_decoder),
+					    &ctx)) {
+		SPDK_ERRLOG("spdk_json_decode_object failed\n");
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS, "Invalid parameters");
+		goto out;
+	}
+
+	tgt = spdk_nvmf_get_tgt(ctx.tgt_name);
+	if (!tgt) {
+		SPDK_ERRLOG("Unable to find a target object.\n");
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
+						 "Unable to find a target.");
+		goto out;
+	}
+
+	referral = spdk_nvmf_tgt_find_referral(tgt, ctx.nqn);
+	if (!referral) {
+		SPDK_ERRLOG("Unable to find referral with NQN %s\n", ctx.nqn);
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS, "Invalid parameters");
+		goto out;
+	}
+
+	if (ctx.dhchap_key != NULL) {
+		key = spdk_keyring_get_key(ctx.dhchap_key);
+		if (key == NULL) {
+			SPDK_ERRLOG("Unable to find DH-HMAC-CHAP key: %s\n", ctx.dhchap_key);
+			spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+							 "Invalid parameters");
+			goto out;
+		}
+	}
+	if (ctx.dhchap_ctrlr_key != NULL) {
+		ckey = spdk_keyring_get_key(ctx.dhchap_ctrlr_key);
+		if (ckey == NULL) {
+			SPDK_ERRLOG("Unable to find DH-HMAC-CHAP ctrlr key: %s\n",
+				    ctx.dhchap_ctrlr_key);
+			spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+							 "Invalid parameters");
+			goto out;
+		}
+	}
+
+	opts.size = SPDK_SIZEOF(&opts, dhchap_ctrlr_key);
+	opts.params = params;
+	opts.dhchap_key = key;
+	opts.dhchap_ctrlr_key = ckey;
+	rc = spdk_nvmf_discovery_referral_add_host_ext(referral, ctx.host, &opts);
+	if (rc != 0) {
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR, "Internal error");
+		goto out;
+	}
+
+	spdk_jsonrpc_send_bool_response(request, true);
+out:
+	spdk_keyring_put_key(ckey);
+	spdk_keyring_put_key(key);
+	nvmf_rpc_host_ctx_free(&ctx);
+}
+SPDK_RPC_REGISTER("nvmf_discovery_referral_add_host", rpc_nvmf_discovery_referral_add_host,
+		  SPDK_RPC_RUNTIME)
+
+static void
+rpc_nvmf_discovery_referral_remove_host(struct spdk_jsonrpc_request *request,
+					const struct spdk_json_val *params)
+{
+	struct nvmf_rpc_host_ctx *ctx;
+	struct spdk_nvmf_referral *referral;
+	struct spdk_nvmf_tgt *tgt;
+	int rc;
+
+	ctx = calloc(1, sizeof(*ctx));
+	if (ctx == NULL) {
+		SPDK_ERRLOG("Unable to allocate context to perform RPC\n");
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR, "Out of memory");
+		return;
+	}
+
+	ctx->request = request;
+
+	if (spdk_json_decode_object(params, nvmf_rpc_referral_host_decoder,
+				    SPDK_COUNTOF(nvmf_rpc_referral_host_decoder),
+				    ctx)) {
+		SPDK_ERRLOG("spdk_json_decode_object failed\n");
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS, "Invalid parameters");
+		nvmf_rpc_host_ctx_free(ctx);
+		free(ctx);
+		return;
+	}
+
+	tgt = spdk_nvmf_get_tgt(ctx->tgt_name);
+	if (!tgt) {
+		SPDK_ERRLOG("Unable to find a target object.\n");
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
+						 "Unable to find a target.");
+		nvmf_rpc_host_ctx_free(ctx);
+		free(ctx);
+		return;
+	}
+
+	referral = spdk_nvmf_tgt_find_referral(tgt, ctx->nqn);
+	if (!referral) {
+		SPDK_ERRLOG("Unable to find referral with NQN %s\n", ctx->nqn);
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS, "Invalid parameters");
+		nvmf_rpc_host_ctx_free(ctx);
+		free(ctx);
+		return;
+	}
+
+	rc = spdk_nvmf_discovery_referral_remove_host(referral, ctx->host);
+	if (rc != 0) {
+		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR, "Internal error");
+		nvmf_rpc_host_ctx_free(ctx);
+		free(ctx);
+		return;
+	}
+	spdk_jsonrpc_send_bool_response(ctx->request, true);
+	nvmf_rpc_host_ctx_free(ctx);
+	free(ctx);
+
+}
+SPDK_RPC_REGISTER("nvmf_discovery_referral_remove_host", rpc_nvmf_discovery_referral_remove_host,
+		  SPDK_RPC_RUNTIME)
+
 
 static void
 rpc_nvmf_subsystem_set_keys(struct spdk_jsonrpc_request *request,

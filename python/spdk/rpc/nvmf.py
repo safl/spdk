@@ -386,6 +386,7 @@ def nvmf_discovery_add_referral(client, **params):
         secure_channel: The connection to that discovery
             subsystem requires a secure channel (optional).
         subnqn: Subsystem NQN.
+        allow_any_host: Allow any host (True) or enforce allowed host list (False). Default: False.
 
     Returns:
         True or False
@@ -398,6 +399,9 @@ def nvmf_discovery_add_referral(client, **params):
 
     if params.get('subnqn') == 'discovery':
         params['subnqn'] = 'nqn.2014-08.org.nvmexpress.discovery'
+
+    if params.get('allow_any_host') == 'allow_any_host':
+        params['allow_any_host'] = True
 
     return client.call('nvmf_discovery_add_referral', params)
 
@@ -459,6 +463,56 @@ def nvmf_discovery_get_referrals(client, tgt_name=None):
         params['tgt_name'] = tgt_name
 
     return client.call('nvmf_discovery_get_referrals', params)
+
+
+def nvmf_discovery_referral_add_host(client, nqn, host, tgt_name=None, psk=None, dhchap_key=None,
+                                     dhchap_ctrlr_key=None):
+    """Add a host NQN to the list of allowed hosts.
+
+    Args:
+        nqn: Referral Subsystem NQN.
+        host: Host NQN to add to the list of allowed host NQNs
+        tgt_name: name of the parent NVMe-oF target (optional)
+        psk: PSK file path for TLS (optional)
+        dhchap_key: DH-HMAC-CHAP key name (optional)
+        dhchap_ctrlr_key: DH-HMAC-CHAP controller key name (optional)
+
+    Returns:
+        True or False
+    """
+    params = {'nqn': nqn,
+              'host': host}
+
+    if tgt_name:
+        params['tgt_name'] = tgt_name
+    if psk:
+        params['psk'] = psk
+    if dhchap_key is not None:
+        params['dhchap_key'] = dhchap_key
+    if dhchap_ctrlr_key is not None:
+        params['dhchap_ctrlr_key'] = dhchap_ctrlr_key
+
+    return client.call('nvmf_discovery_referral_add_host', params)
+
+
+def nvmf_discovery_referral_remove_host(client, nqn, host, tgt_name=None):
+    """Remove a host NQN from the list of allowed hosts.
+
+    Args:
+        nqn: Referral Subsystem NQN.
+        host: Host NQN to remove to the list of allowed host NQNs
+        tgt_name: name of the parent NVMe-oF target (optional).
+
+    Returns:
+        True or False
+    """
+    params = {'nqn': nqn,
+              'host': host}
+
+    if tgt_name:
+        params['tgt_name'] = tgt_name
+
+    return client.call('nvmf_discovery_referral_remove_host', params)
 
 
 def nvmf_subsystem_add_ns(client, **params):

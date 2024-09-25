@@ -40,6 +40,7 @@ struct spdk_nvmf_poll_group;
 struct spdk_json_write_ctx;
 struct spdk_json_val;
 struct spdk_nvmf_transport;
+struct spdk_nvmf_referral;
 
 /**
  * Specify filter rules which are applied during discovery log generation.
@@ -191,6 +192,7 @@ struct spdk_nvmf_referral_opts {
 	struct spdk_nvme_transport_id trid;
 	/** The referral describes a referral to a subsystem which requires a secure channel */
 	bool secure_channel;
+	bool allow_any_host;
 };
 
 /**
@@ -214,6 +216,35 @@ int spdk_nvmf_tgt_add_referral(struct spdk_nvmf_tgt *tgt,
  */
 int spdk_nvmf_tgt_remove_referral(struct spdk_nvmf_tgt *tgt,
 				  const struct spdk_nvmf_referral_opts *opts);
+
+
+/**
+ * Allow the given host NQN to connect to the given referral.  Adding a host that's already allowed
+ * results in an error.
+ *
+ * \param referral Subsystem to add host to.
+ * \param hostnqn The NQN for the host.
+ * \param params Transport specific parameters.
+ *
+ * \return 0 on success, or negated errno value on failure.
+ */
+int spdk_nvmf_discovery_referral_add_host(struct spdk_nvmf_referral *referral,
+		const char *hostnqn, const struct spdk_json_val *params);
+
+/**
+ * Remove the given host NQN from the list of allowed hosts.
+ *
+ * This call only removes the host from the allowed list of hosts.
+ * If a host with the given NQN is already connected it will not be disconnected,
+ * but it will not be able to create new connections.
+ *
+ * \param referral Subsystem to remove host from.
+ * \param hostnqn The NQN for the host.
+ *
+ * \return 0 on success, or negated errno value on failure.
+ */
+int spdk_nvmf_discovery_referral_remove_host(struct spdk_nvmf_referral *referral,
+		const char *hostnqn);
 
 
 /**
@@ -552,6 +583,17 @@ struct spdk_nvmf_subsystem *spdk_nvmf_tgt_find_subsystem(struct spdk_nvmf_tgt *t
 		const char *subnqn);
 
 /**
+ * Search the target for a referral with the given NQN.
+ *
+ * \param tgt The NVMe-oF target to search from.
+ * \param subnqn NQN of the referral.
+ *
+ * \return a pointer to the NVMe-oF referral on success, or NULL on failure.
+ */
+struct spdk_nvmf_referral *spdk_nvmf_tgt_find_referral(struct spdk_nvmf_tgt *tgt,
+		const char *subnqn);
+
+/**
  * Begin iterating over all known subsystems. If no subsystems are present, return NULL.
  *
  * \param tgt The NVMe-oF target to iterate.
@@ -639,6 +681,18 @@ struct spdk_nvmf_host_opts {
  */
 int spdk_nvmf_subsystem_add_host_ext(struct spdk_nvmf_subsystem *subsystem,
 				     const char *hostnqn, struct spdk_nvmf_host_opts *opts);
+
+/**
+ * Allow the given host to connect to the given referral.
+ *
+ * \param referral Subsystem to add host to.
+ * \param hostnqn Host's NQN.
+ * \param opts Host's options.
+ *
+ * \return 0 on success, or negated errno value on failure.
+ */
+int spdk_nvmf_discovery_referral_add_host_ext(struct spdk_nvmf_referral *referral,
+		const char *hostnqn, struct spdk_nvmf_host_opts *opts);
 
 /**
  * Remove the given host NQN from the list of allowed hosts.
@@ -740,6 +794,58 @@ struct spdk_nvmf_host *spdk_nvmf_subsystem_get_first_host(struct spdk_nvmf_subsy
  * \return next allowed host in this subsystem, or NULL if prev_host was the last host.
  */
 struct spdk_nvmf_host *spdk_nvmf_subsystem_get_next_host(struct spdk_nvmf_subsystem *subsystem,
+		struct spdk_nvmf_host *prev_host);
+
+/**
+ * Set whether a referral should allow any host or only hosts in the allowed list.
+ *
+ * \param referral Subsystem to modify.
+ * \param allow_any_host true to allow any host to connect to this referral,
+ * or false to enforce the list configured with spdk_nvmf_discovery_referral_add_host().
+ *
+ * \return 0 on success, or negated errno value on failure.
+ */
+int spdk_nvmf_referral_set_allow_any_host(struct spdk_nvmf_referral *referral,
+		bool allow_any_host);
+
+/**
+ * Check whether a referral should allow any host or only hosts in the allowed list.
+ *
+ * \param referral Subsystem to query.
+ *
+ * \return true if any host is allowed to connect to this referral, or false if
+ * connecting hosts must be in the list configured with spdk_nvmf_discovery_referral_add_host().
+ */
+bool spdk_nvmf_referral_get_allow_any_host(const struct spdk_nvmf_referral *referral);
+
+/**
+ * Check if the given host is allowed to connect to the referral.
+ *
+ * \param referral The referral to query.
+ * \param hostnqn The NQN of the host.
+ *
+ * \return true if allowed, false if not.
+ */
+bool spdk_nvmf_referral_host_allowed(struct spdk_nvmf_referral *referral, const char *hostnqn);
+
+/**
+ * Get the first allowed host in a referral.
+ *
+ * \param referral Subsystem to query.
+ *
+ * \return first allowed host in this referral, or NULL if none allowed.
+ */
+struct spdk_nvmf_host *spdk_nvmf_referral_get_first_host(struct spdk_nvmf_referral *referral);
+
+/**
+ * Get the next allowed host in a referral.
+ *
+ * \param referral Subsystem to query.
+ * \param prev_host Previous host returned from this function.
+ *
+ * \return next allowed host in this referral, or NULL if prev_host was the last host.
+ */
+struct spdk_nvmf_host *spdk_nvmf_referral_get_next_host(struct spdk_nvmf_referral *referral,
 		struct spdk_nvmf_host *prev_host);
 
 /**
@@ -1238,6 +1344,15 @@ int spdk_nvmf_subsystem_set_mn(struct spdk_nvmf_subsystem *subsystem, const char
  * \return NQN of the specified subsystem.
  */
 const char *spdk_nvmf_subsystem_get_nqn(const struct spdk_nvmf_subsystem *subsystem);
+
+/**
+ * Get the NQN of the specified subsystem.
+ *
+ * \param subsystem Subsystem to query.
+ *
+ * \return NQN of the specified subsystem.
+ */
+const char *spdk_nvmf_referral_get_nqn(const struct spdk_nvmf_referral *referral);
 
 /**
  * Get the type of the specified subsystem.

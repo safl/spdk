@@ -329,6 +329,7 @@ nvmf_subsystem_remove_host(struct spdk_nvmf_subsystem *subsystem, struct spdk_nv
 	nvmf_host_free(host);
 }
 
+
 static void
 _nvmf_subsystem_remove_listener(struct spdk_nvmf_subsystem *subsystem,
 				struct spdk_nvmf_subsystem_listener *listener,
@@ -1349,6 +1350,178 @@ spdk_nvmf_subsystem_get_first_host(struct spdk_nvmf_subsystem *subsystem)
 struct spdk_nvmf_host *
 spdk_nvmf_subsystem_get_next_host(struct spdk_nvmf_subsystem *subsystem,
 				  struct spdk_nvmf_host *prev_host)
+{
+	return TAILQ_NEXT(prev_host, link);
+}
+/* Must hold subsystem->mutex while calling this function */
+static struct spdk_nvmf_host *
+nvmf_referral_find_host(struct spdk_nvmf_referral *referral, const char *hostnqn)
+{
+	struct spdk_nvmf_host *host = NULL;
+
+	TAILQ_FOREACH(host, &referral->hosts, link) {
+		if (strcmp(hostnqn, host->nqn) == 0) {
+			return host;
+		}
+	}
+
+	return NULL;
+}
+
+
+int
+spdk_nvmf_discovery_referral_add_host_ext(struct spdk_nvmf_referral *referral,
+		const char *hostnqn, struct spdk_nvmf_host_opts *opts)
+{
+	struct spdk_nvmf_host *host;
+	struct spdk_key *key;
+
+	if (!nvmf_nqn_is_valid(hostnqn)) {
+		return -EINVAL;
+	}
+
+	pthread_mutex_lock(&referral->mutex);
+
+	if (nvmf_referral_find_host(referral, hostnqn)) {
+		/* This referral already allows the specified host. */
+		pthread_mutex_unlock(&referral->mutex);
+		return -EINVAL;
+	}
+
+	host = calloc(1, sizeof(*host));
+	if (!host) {
+		pthread_mutex_unlock(&referral->mutex);
+		return -ENOMEM;
+	}
+
+	key = SPDK_GET_FIELD(opts, dhchap_key, NULL);
+	if (key != NULL) {
+		if (!nvmf_auth_is_supported()) {
+			SPDK_ERRLOG("NVMe in-band authentication is unsupported\n");
+			pthread_mutex_unlock(&referral->mutex);
+			nvmf_host_free(host);
+			return -EINVAL;
+		}
+		host->dhchap_key = spdk_key_dup(key);
+		if (host->dhchap_key == NULL) {
+			pthread_mutex_unlock(&referral->mutex);
+			nvmf_host_free(host);
+			return -EINVAL;
+		}
+		key = SPDK_GET_FIELD(opts, dhchap_ctrlr_key, NULL);
+		if (key != NULL) {
+			host->dhchap_ctrlr_key = spdk_key_dup(key);
+			if (host->dhchap_ctrlr_key == NULL) {
+				pthread_mutex_unlock(&referral->mutex);
+				nvmf_host_free(host);
+				return -EINVAL;
+			}
+		}
+	} else if (SPDK_GET_FIELD(opts, dhchap_ctrlr_key, NULL) != NULL) {
+		SPDK_ERRLOG("DH-HMAC-CHAP controller key requires host key to be set\n");
+		pthread_mutex_unlock(&referral->mutex);
+		nvmf_host_free(host);
+		return -EINVAL;
+	}
+
+	snprintf(host->nqn, sizeof(host->nqn), "%s", hostnqn);
+
+
+	SPDK_DTRACE_PROBE2(nvmf_discovery_referral_add_host, referral->subnqn, host->nqn);
+
+	TAILQ_INSERT_HEAD(&referral->hosts, host, link);
+
+	pthread_mutex_unlock(&referral->mutex);
+
+	return 0;
+}
+/* Must hold subsystem->mutex while calling this function */
+static void
+nvmf_ref_host_free(struct spdk_nvmf_host *host)
+{
+	spdk_keyring_put_key(host->dhchap_key);
+	spdk_keyring_put_key(host->dhchap_ctrlr_key);
+	free(host);
+}
+
+
+static void
+nvmf_referral_remove_host(struct spdk_nvmf_referral *referral, struct spdk_nvmf_host *host)
+{
+	TAILQ_REMOVE(&referral->hosts, host, link);
+	nvmf_ref_host_free(host);
+}
+
+
+int
+spdk_nvmf_discovery_referral_remove_host(struct spdk_nvmf_referral *referral, const char *hostnqn)
+{
+	struct spdk_nvmf_host *host;
+
+	host = nvmf_referral_find_host(referral, hostnqn);
+	if (host == NULL) {
+		pthread_mutex_unlock(&referral->mutex);
+		return -ENOENT;
+	}
+
+	SPDK_DTRACE_PROBE2(nvmf_referral_remove_host, referral->subnqn, host->nqn);
+
+	nvmf_referral_remove_host(referral, host);
+
+	return 0;
+}
+
+
+bool
+spdk_nvmf_referral_get_allow_any_host(const struct spdk_nvmf_referral *referral)
+{
+	bool allow_any_host;
+	struct spdk_nvmf_referral *ref;
+
+	/* Technically, taking the mutex modifies data in the referral. But the const
+	 * is still important to convey that this doesn't mutate any other data. Cast
+	 * it away to work around this. */
+	ref = (struct spdk_nvmf_referral *)referral;
+
+	pthread_mutex_lock(&ref->mutex);
+	allow_any_host = ref->allow_any_host;
+	pthread_mutex_unlock(&ref->mutex);
+
+	return allow_any_host;
+}
+
+bool
+spdk_nvmf_referral_host_allowed(struct spdk_nvmf_referral *referral, const char *hostnqn)
+{
+	bool allowed;
+
+	if (!hostnqn) {
+		return false;
+	}
+
+	pthread_mutex_lock(&referral->mutex);
+
+	if (referral->allow_any_host) {
+		pthread_mutex_unlock(&referral->mutex);
+		return true;
+	}
+
+	allowed =  nvmf_referral_find_host(referral, hostnqn) != NULL;
+	pthread_mutex_unlock(&referral->mutex);
+
+	return allowed;
+}
+
+struct spdk_nvmf_host *
+spdk_nvmf_referral_get_first_host(struct spdk_nvmf_referral *referral)
+{
+	return TAILQ_FIRST(&referral->hosts);
+}
+
+
+struct spdk_nvmf_host *
+spdk_nvmf_referral_get_next_host(struct spdk_nvmf_referral *referral,
+				 struct spdk_nvmf_host *prev_host)
 {
 	return TAILQ_NEXT(prev_host, link);
 }
@@ -2479,6 +2652,12 @@ const char *
 spdk_nvmf_subsystem_get_nqn(const struct spdk_nvmf_subsystem *subsystem)
 {
 	return subsystem->subnqn;
+}
+
+const char *
+spdk_nvmf_referral_get_nqn(const struct spdk_nvmf_referral *referral)
+{
+	return referral->trid.subnqn;
 }
 
 /* We have to use the typedef in the function declaration to appease astyle. */
