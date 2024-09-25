@@ -24,6 +24,11 @@ Added `spdk_fd_group_create_owner()` which allows `fd_group` to manage all its f
 Added `spdk_fd_group_add_ext()` API which can receive `spdk_event_handler_opts` structure. This is
 to prevent any further expansion of`spdk_fd_group_add()` API.
 
+### thread
+
+Added `spdk_interrupt_register_ext()` API which can receive `spdk_event_handler_opts` structure.
+This is to prevent any further expansion of`spdk_interrupt_register()` API.
+
 ## v24.09
 
 ### accel
