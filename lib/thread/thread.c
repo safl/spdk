@@ -2824,6 +2824,19 @@ struct spdk_interrupt *
 spdk_interrupt_register_for_events(int efd, uint32_t events, spdk_interrupt_fn fn, void *arg,
 				   const char *name)
 {
+	struct spdk_event_handler_opts opts;
+
+	opts.size = SPDK_SIZEOF(&opts, efd_type);
+	opts.events = events;
+	opts.efd_type = SPDK_EFD_TYPE_DEFAULT;
+
+	return spdk_interrupt_register_ext(efd, fn, arg, name, &opts);
+}
+
+struct spdk_interrupt *
+spdk_interrupt_register_ext(int efd, spdk_interrupt_fn fn, void *arg, const char *name,
+			    struct spdk_event_handler_opts *opts)
+{
 	struct spdk_thread *thread;
 	struct spdk_interrupt *intr;
 	int ret;
@@ -2856,7 +2869,7 @@ spdk_interrupt_register_for_events(int efd, uint32_t events, spdk_interrupt_fn f
 	intr->fn = fn;
 	intr->arg = arg;
 
-	ret = spdk_fd_group_add_for_events(thread->fgrp, efd, events, _interrupt_wrapper, intr, intr->name);
+	ret = spdk_fd_group_add_ext(thread->fgrp, efd, _interrupt_wrapper, intr, intr->name, opts);
 
 	if (ret != 0) {
 		SPDK_ERRLOG("thread %s: failed to add fd %d: %s\n",
