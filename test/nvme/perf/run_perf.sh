@@ -127,6 +127,21 @@ function usage() {
 	set -x
 }
 
+function check_lvols_present() {
+	if [[ ${#LVOL_BDEVS[@]} -eq 0 ]]; then
+		echo "ERROR: No logical volumes were created."
+		exit 1
+	fi
+
+	for lvol_bdev in "${LVOL_BDEVS[@]}"; do
+		if ! $rootdir/scripts/rpc.py bdev_get_bdevs | jq -e ".[] | select(.name == \"$lvol_bdev\")" > /dev/null; then
+		echo "ERROR: Logical volume $lvol_bdev is not present."
+		exit 1
+	fi
+	done
+	echo "INFO: All logical volumes are present."
+}
+
 while getopts 'h-:' optchar; do
 	case "$optchar" in
 		-)
@@ -213,6 +228,8 @@ if [[ "$PLUGIN" =~ "xnvme" ]]; then
 elif [[ "$PLUGIN" =~ "bdev" ]]; then
 	if $USE_LVOL_BDEVS; then
 		create_lvols
+
+		check_lvols_present
 	fi
 	create_spdk_bdev_conf "$BDEV_CACHE" "$BDEV_POOL"
 fi
