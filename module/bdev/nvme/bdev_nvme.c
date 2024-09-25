@@ -640,6 +640,10 @@ nvme_ctrlr_delete(struct nvme_ctrlr *nvme_ctrlr)
 
 	spdk_poller_unregister(&nvme_ctrlr->reconnect_delay_timer);
 
+	if (spdk_interrupt_mode_is_enabled()) {
+		spdk_interrupt_unregister(&nvme_ctrlr->intr);
+	}
+
 	/* First, unregister the adminq poller, as the driver will poll adminq if necessary */
 	spdk_poller_unregister(&nvme_ctrlr->adminq_timer_poller);
 
@@ -1790,6 +1794,10 @@ static int bdev_nvme_poll_adminq(void *arg);
 static void
 bdev_nvme_change_adminq_poll_period(struct nvme_ctrlr *nvme_ctrlr, uint64_t new_period_us)
 {
+	if (spdk_interrupt_mode_is_enabled()) {
+		return;
+	}
+
 	spdk_poller_unregister(&nvme_ctrlr->adminq_timer_poller);
 
 	nvme_ctrlr->adminq_timer_poller = SPDK_POLLER_REGISTER(bdev_nvme_poll_adminq,
@@ -1871,19 +1879,37 @@ bdev_nvme_destruct(void *ctx)
 }
 
 static int
+bdev_nvme_qpair_process_completion(void *arg)
+{
+	struct nvme_qpair *nvme_qpair = arg;
+	struct nvme_poll_group *group = nvme_qpair->group;
+	int64_t num_completions;
+
+	num_completions = spdk_nvme_qpair_process_completions(nvme_qpair->qpair, 0);
+	if (spdk_unlikely(num_completions < 0)) {
+		bdev_nvme_check_io_qpairs(group);
+	}
+
+	return num_completions;
+}
+
+static int
 bdev_nvme_create_qpair(struct nvme_qpair *nvme_qpair)
 {
 	struct nvme_ctrlr *nvme_ctrlr;
 	struct spdk_nvme_io_qpair_opts opts;
 	struct spdk_nvme_qpair *qpair;
+	struct spdk_event_handler_opts hdlr_opts;
 	int rc;
 
 	nvme_ctrlr = nvme_qpair->ctrlr;
 
 	spdk_nvme_ctrlr_get_default_io_qpair_opts(nvme_ctrlr->ctrlr, &opts, sizeof(opts));
-	opts.delay_cmd_submit = g_opts.delay_cmd_submit;
 	opts.create_only = true;
-	opts.async_mode = true;
+	if (!spdk_interrupt_mode_is_enabled()) {
+		opts.async_mode = true;
+		opts.delay_cmd_submit = g_opts.delay_cmd_submit;
+	}
 	opts.io_queue_requests = spdk_max(g_opts.io_queue_requests, opts.io_queue_requests);
 	g_opts.io_queue_requests = opts.io_queue_requests;
 
@@ -1913,6 +1939,18 @@ bdev_nvme_create_qpair(struct nvme_qpair *nvme_qpair)
 
 	if (!g_opts.disable_auto_failback) {
 		_bdev_nvme_clear_io_path_cache(nvme_qpair);
+	}
+
+	if (spdk_interrupt_mode_is_enabled()) {
+		hdlr_opts.size = SPDK_SIZEOF(&hdlr_opts, fd_type);
+		hdlr_opts.events = SPDK_INTERRUPT_EVENT_IN;
+		hdlr_opts.fd_type = SPDK_FD_TYPE_VFIO;
+		rc = spdk_nvme_poll_group_add_qpair_fd(qpair, bdev_nvme_qpair_process_completion,
+						       nvme_qpair, &hdlr_opts);
+		if (rc != 0) {
+			SPDK_ERRLOG("Failed to add qpair fd to nvme poll group.\n");
+			goto err;
+		}
 	}
 
 	return 0;
@@ -3511,6 +3549,14 @@ bdev_nvme_destroy_ctrlr_channel_cb(void *io_device, void *ctx_buf)
 	if (nvme_qpair->qpair != NULL) {
 		if (ctrlr_ch->reset_iter == NULL) {
 			spdk_nvme_ctrlr_disconnect_io_qpair(nvme_qpair->qpair);
+			if (spdk_interrupt_mode_is_enabled()) {
+				if (nvme_qpair->qpair != NULL) {
+					spdk_nvme_ctrlr_free_io_qpair(nvme_qpair->qpair);
+					nvme_qpair->qpair = NULL;
+				}
+				nvme_qpair_delete(nvme_qpair);
+				return;
+			}
 		} else {
 			/* Skip current ctrlr_channel in a full reset sequence because
 			 * it is being deleted now. The qpair is already being disconnected.
@@ -3616,6 +3662,8 @@ static int
 bdev_nvme_create_poll_group_cb(void *io_device, void *ctx_buf)
 {
 	struct nvme_poll_group *group = ctx_buf;
+	uint64_t period;
+	int rc, fd;
 
 	TAILQ_INIT(&group->qpair_list);
 
@@ -3624,11 +3672,36 @@ bdev_nvme_create_poll_group_cb(void *io_device, void *ctx_buf)
 		return -1;
 	}
 
-	group->poller = SPDK_POLLER_REGISTER(bdev_nvme_poll, group, g_opts.nvme_ioq_poll_period_us);
+	period = spdk_interrupt_mode_is_enabled() ? 0 : g_opts.nvme_ioq_poll_period_us;
+
+	group->poller = SPDK_POLLER_REGISTER(bdev_nvme_poll, group, period);
 
 	if (group->poller == NULL) {
 		spdk_nvme_poll_group_destroy(group->group);
 		return -1;
+	}
+
+	spdk_poller_register_interrupt(group->poller, NULL, NULL);
+
+	if (spdk_interrupt_mode_is_enabled()) {
+		rc = spdk_nvme_poll_group_create_fd_group(group->group);
+		if (rc < 0) {
+			spdk_nvme_poll_group_destroy(group->group);
+			return -1;
+		}
+
+		fd = spdk_nvme_poll_group_get_fd(group->group);
+		if (fd < 0) {
+			spdk_nvme_poll_group_destroy(group->group);
+			return -1;
+		}
+
+		group->intr = SPDK_INTERRUPT_REGISTER(fd, spdk_nvme_poll_group_wait,
+						      group->group);
+		if (!group->intr) {
+			spdk_nvme_poll_group_destroy(group->group);
+			return -1;
+		}
 	}
 
 	return 0;
@@ -3643,6 +3716,10 @@ bdev_nvme_destroy_poll_group_cb(void *io_device, void *ctx_buf)
 
 	if (group->accel_channel) {
 		spdk_put_io_channel(group->accel_channel);
+	}
+
+	if (spdk_interrupt_mode_is_enabled()) {
+		spdk_interrupt_unregister(&group->intr);
 	}
 
 	spdk_poller_unregister(&group->poller);
@@ -5634,7 +5711,9 @@ nvme_ctrlr_create(struct spdk_nvme_ctrlr *ctrlr,
 	struct nvme_ctrlr *nvme_ctrlr;
 	struct nvme_path_id *path_id;
 	const struct spdk_nvme_ctrlr_data *cdata;
-	int rc;
+	struct spdk_event_handler_opts opts;
+	uint64_t period;
+	int fd, rc;
 
 	nvme_ctrlr = calloc(1, sizeof(*nvme_ctrlr));
 	if (nvme_ctrlr == NULL) {
@@ -5720,8 +5799,29 @@ nvme_ctrlr_create(struct spdk_nvme_ctrlr *ctrlr,
 		spdk_bdev_nvme_get_default_ctrlr_opts(&nvme_ctrlr->opts);
 	}
 
+	period = spdk_interrupt_mode_is_enabled() ? 0 : g_opts.nvme_adminq_poll_period_us;
+
 	nvme_ctrlr->adminq_timer_poller = SPDK_POLLER_REGISTER(bdev_nvme_poll_adminq, nvme_ctrlr,
-					  g_opts.nvme_adminq_poll_period_us);
+					  period);
+
+	spdk_poller_register_interrupt(nvme_ctrlr->adminq_timer_poller, NULL, NULL);
+
+	if (spdk_interrupt_mode_is_enabled()) {
+		fd = spdk_nvme_ctrlr_get_admin_qp_fd(nvme_ctrlr->ctrlr);
+		if (fd < 0) {
+			goto err;
+		}
+
+		opts.size = SPDK_SIZEOF(&opts, fd_type);
+		opts.events = SPDK_INTERRUPT_EVENT_IN;
+		opts.fd_type = SPDK_FD_TYPE_VFIO;
+
+		nvme_ctrlr->intr = SPDK_INTERRUPT_REGISTER_EXT(fd, bdev_nvme_poll_adminq,
+				   nvme_ctrlr, &opts);
+		if (!nvme_ctrlr->intr) {
+			goto err;
+		}
+	}
 
 	if (g_opts.timeout_us > 0) {
 		/* Register timeout callback. Timeout values for IO vs. admin reqs can be different. */
@@ -6384,6 +6484,10 @@ spdk_bdev_nvme_create(struct spdk_nvme_transport_id *trid,
 	ctx->drv_opts.keep_alive_timeout_ms = g_opts.keep_alive_timeout_ms;
 	ctx->drv_opts.disable_read_ana_log_page = true;
 	ctx->drv_opts.transport_tos = g_opts.transport_tos;
+
+	if (trid->trtype == SPDK_NVME_TRANSPORT_PCIE && spdk_interrupt_mode_is_enabled()) {
+		ctx->drv_opts.enable_interrupts = true;
+	}
 
 	if (ctx->bdev_opts.psk != NULL) {
 		ctx->drv_opts.tls_psk = spdk_keyring_get_key(ctx->bdev_opts.psk);
