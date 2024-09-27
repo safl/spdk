@@ -3749,7 +3749,6 @@ nvmf_rdma_qpair_process_last_wqe_event(void *ctx)
 	if (rqpair) {
 		assert(event_ctx == rqpair->last_wqe_reached_ctx);
 		nvmf_rdma_handle_last_wqe_reached(rqpair);
-		rqpair->last_wqe_reached_ctx = NULL;
 	}
 	free(event_ctx);
 }
