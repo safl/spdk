@@ -33,6 +33,10 @@ for the PCIe transport.
 
 ### util
 
+Added `spdk_fd_group_create_with_fd_ownership()` which allows `fd_group` to manage all the file
+descriptors registered in this group, instead of its parent `fd_group`. This way for any new event
+`spdk_fd_group_wait()` can be called directly on this `fd_group` instead of its parent `fd_group`.
+
 Added `spdk_fd_group_add_ext()` API which can receive `spdk_event_handler_opts` structure. This is
 to prevent any further expansion of`spdk_fd_group_add()` API.
 
