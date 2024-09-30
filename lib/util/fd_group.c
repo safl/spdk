@@ -52,6 +52,7 @@ struct spdk_fd_group {
 	int num_fds; /* Number of fds registered in this group. */
 	int num_child_fds; /* Number of fds registered on all its children groups. */
 
+	bool fd_owner; /* This group has ownership of all its fds */
 	struct spdk_fd_group *parent;
 
 	/* interrupt sources list */
@@ -283,7 +284,7 @@ spdk_fd_group_add_ext(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *
 	ehdlr->efd_type = opts->efd_type;
 	snprintf(ehdlr->name, sizeof(ehdlr->name), "%s", name);
 
-	if (fgrp->parent) {
+	if (fgrp->parent && !fgrp->fd_owner) {
 		epfd = fgrp->parent->epfd;
 		parent = fgrp->parent;
 	} else {
@@ -335,7 +336,7 @@ spdk_fd_group_remove(struct spdk_fd_group *fgrp, int efd)
 
 	assert(ehdlr->state != EVENT_HANDLER_STATE_REMOVED);
 
-	if (fgrp->parent) {
+	if (fgrp->parent && !fgrp->fd_owner) {
 		epfd = fgrp->parent->epfd;
 		parent = fgrp->parent;
 	} else {
@@ -389,7 +390,7 @@ spdk_fd_group_event_modify(struct spdk_fd_group *fgrp,
 
 	ehdlr->events = event_types;
 
-	if (fgrp->parent) {
+	if (fgrp->parent && !fgrp->fd_owner) {
 		epfd = fgrp->parent->epfd;
 	} else {
 		epfd = fgrp->epfd;
@@ -403,6 +404,12 @@ spdk_fd_group_event_modify(struct spdk_fd_group *fgrp,
 
 int
 spdk_fd_group_create(struct spdk_fd_group **_egrp)
+{
+	return spdk_fd_group_create_owner(_egrp, false);
+}
+
+int
+spdk_fd_group_create_owner(struct spdk_fd_group **_egrp, bool fd_owner)
 {
 	struct spdk_fd_group *fgrp;
 
@@ -420,6 +427,7 @@ spdk_fd_group_create(struct spdk_fd_group **_egrp)
 
 	fgrp->num_fds = 0;
 	fgrp->num_child_fds = 0;
+	fgrp->fd_owner = fd_owner;
 	fgrp->epfd = epoll_create1(EPOLL_CLOEXEC);
 	if (fgrp->epfd < 0) {
 		free(fgrp);
@@ -457,7 +465,7 @@ spdk_fd_group_wait(struct spdk_fd_group *fgrp, int timeout)
 	int nfds;
 	int bytes_read;
 
-	if (fgrp->parent != NULL) {
+	if (!fgrp->fd_owner && fgrp->parent != NULL) {
 		if (timeout < 0) {
 			SPDK_ERRLOG("Calling spdk_fd_group_wait on a group nested in another group without a timeout will block indefinitely.\n");
 			assert(false);
