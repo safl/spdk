@@ -68,6 +68,16 @@ struct spdk_fd_group;
 int spdk_fd_group_create(struct spdk_fd_group **fgrp);
 
 /**
+ * Initialize one fd_group.
+ *
+ * \param fgrp A pointer to return the initialized fgrp.
+ * \param fd_owner specifies whether the fgrp will have ownership of all the file descriptors.
+ *
+ * \return 0 on success or -errno if failed
+ */
+int spdk_fd_group_create_owner(struct spdk_fd_group **fgrp, bool fd_owner);
+
+/**
  * Release all resources associated with this fgrp.
  *
  * Users need to remove all event sources from the fgrp before destroying it.

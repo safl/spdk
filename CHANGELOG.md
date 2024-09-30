@@ -19,6 +19,8 @@ Added 3 APIs to handle multiple interrupts for PCI device `spdk_pci_device_enabl
 
 ### util
 
+Added `spdk_fd_group_create_owner()` which allows `fd_group` to manage all its file descriptors.
+
 Added `spdk_fd_group_add_ext()` API which can receive `spdk_event_handler_opts` structure. This is
 to prevent any further expansion of`spdk_fd_group_add()` API.
 
