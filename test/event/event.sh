@@ -48,6 +48,8 @@ run_test "event_reactor_perf" $testdir/reactor_perf/reactor_perf -t 1
 
 if [ $(uname -s) = Linux ]; then
 	run_test "event_scheduler" $testdir/scheduler/scheduler.sh
+	# only run this case in Linux since SPDK does not handle interrupts in FreeBSD currently.
+	run_test "interrupt_event_perf" $testdir/interrupt_event_perf/interrupt_event_perf -m 0xF -c 3
 	if modprobe -n nbd; then
 		run_test "app_repeat" app_repeat_test
 	fi

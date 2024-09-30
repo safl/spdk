@@ -6,7 +6,7 @@
 SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-DIRS-y = event_perf reactor reactor_perf
+DIRS-y = event_perf interrupt_event_perf reactor reactor_perf
 
 ifeq ($(OS),Linux)
 DIRS-y += app_repeat scheduler
