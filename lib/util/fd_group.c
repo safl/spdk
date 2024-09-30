@@ -50,6 +50,7 @@ struct event_handler {
 struct spdk_fd_group {
 	int epfd;
 	int num_fds; /* Number of fds registered in this group. */
+	int num_child_fds; /* Number of fds registered on all its children groups. */
 
 	struct spdk_fd_group *parent;
 
@@ -252,6 +253,7 @@ spdk_fd_group_add_ext(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *
 {
 	struct event_handler *ehdlr = NULL;
 	struct epoll_event epevent = {0};
+	struct spdk_fd_group *parent = NULL;
 	int rc;
 	int epfd;
 
@@ -283,6 +285,7 @@ spdk_fd_group_add_ext(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *
 
 	if (fgrp->parent) {
 		epfd = fgrp->parent->epfd;
+		parent = fgrp->parent;
 	} else {
 		epfd = fgrp->epfd;
 	}
@@ -297,6 +300,9 @@ spdk_fd_group_add_ext(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *
 
 	TAILQ_INSERT_TAIL(&fgrp->event_handlers, ehdlr, next);
 	fgrp->num_fds++;
+	if (parent) {
+		parent->num_child_fds++;
+	}
 
 	return 0;
 }
@@ -305,6 +311,7 @@ void
 spdk_fd_group_remove(struct spdk_fd_group *fgrp, int efd)
 {
 	struct event_handler *ehdlr;
+	struct spdk_fd_group *parent = NULL;
 	int rc;
 	int epfd;
 
@@ -330,6 +337,7 @@ spdk_fd_group_remove(struct spdk_fd_group *fgrp, int efd)
 
 	if (fgrp->parent) {
 		epfd = fgrp->parent->epfd;
+		parent = fgrp->parent;
 	} else {
 		epfd = fgrp->epfd;
 	}
@@ -342,6 +350,9 @@ spdk_fd_group_remove(struct spdk_fd_group *fgrp, int efd)
 
 	assert(fgrp->num_fds > 0);
 	fgrp->num_fds--;
+	if (parent) {
+		parent->num_child_fds--;
+	}
 	TAILQ_REMOVE(&fgrp->event_handlers, ehdlr, next);
 
 	/* Delay ehdlr's free in case it is waiting for execution in fgrp wait loop */
@@ -408,6 +419,7 @@ spdk_fd_group_create(struct spdk_fd_group **_egrp)
 	TAILQ_INIT(&fgrp->event_handlers);
 
 	fgrp->num_fds = 0;
+	fgrp->num_child_fds = 0;
 	fgrp->epfd = epoll_create1(EPOLL_CLOEXEC);
 	if (fgrp->epfd < 0) {
 		free(fgrp);
@@ -422,7 +434,7 @@ spdk_fd_group_create(struct spdk_fd_group **_egrp)
 void
 spdk_fd_group_destroy(struct spdk_fd_group *fgrp)
 {
-	if (fgrp == NULL || fgrp->num_fds > 0) {
+	if (fgrp == NULL || fgrp->num_fds > 0 || fgrp->num_child_fds > 0) {
 		SPDK_ERRLOG("Invalid fd_group(%p) to destroy.\n", fgrp);
 		assert(0);
 		return;
@@ -437,7 +449,7 @@ spdk_fd_group_destroy(struct spdk_fd_group *fgrp)
 int
 spdk_fd_group_wait(struct spdk_fd_group *fgrp, int timeout)
 {
-	int totalfds = fgrp->num_fds;
+	int totalfds = fgrp->num_fds + fgrp->num_child_fds;
 	struct epoll_event events[totalfds];
 	struct event_handler *ehdlr;
 	uint64_t count;
