@@ -179,6 +179,7 @@
 
 	# public functions in fd_group.h
 	spdk_fd_group_create;
+	spdk_fd_group_create_with_fd_ownership;
 	spdk_fd_group_destroy;
 	spdk_fd_group_get_epoll_event;
 	spdk_fd_group_wait;

@@ -68,6 +68,23 @@ struct spdk_fd_group;
 int spdk_fd_group_create(struct spdk_fd_group **fgrp);
 
 /**
+ * Initialize one fd_group.
+ *
+ * This function creates and initializes one fd_group. If fd_ownership is set to true, all the
+ * file descriptors registered in this fd_group will be managed directly by the epoll file
+ * descriptor of this fd_group, instead of its parent fd_group. In this case spdk_fd_group_wait()
+ * can be called to wait for any new events generated in this fd_group, instead of its parent
+ * fd_group.
+ * If fd_ownership is set to false, the behaviour remains same as spdk_fd_group_create().
+ *
+ * \param fgrp A pointer to return the initialized fgrp.
+ * \param fd_ownership specifies whether the fgrp will have ownership of all its file descriptors.
+ *
+ * \return 0 on success or -errno if failed
+ */
+int spdk_fd_group_create_with_fd_ownership(struct spdk_fd_group **fgrp, bool fd_ownership);
+
+/**
  * Release all resources associated with this fgrp.
  *
  * Users need to remove all event sources from the fgrp before destroying it.
