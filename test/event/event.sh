@@ -43,6 +43,7 @@ function app_repeat_test() {
 }
 
 run_test "event_perf" $testdir/event_perf/event_perf -m 0xF -t 1
+run_test "interrupt_event_perf" $testdir/interrupt_event_perf/interrupt_event_perf -m 0xF -c 10
 run_test "event_reactor" $testdir/reactor/reactor -t 1
 run_test "event_reactor_perf" $testdir/reactor_perf/reactor_perf -t 1
 
