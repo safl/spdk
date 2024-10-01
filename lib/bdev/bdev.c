@@ -1303,6 +1303,7 @@ static void
 bdev_io_pull_data(struct spdk_bdev_io *bdev_io)
 {
 	struct spdk_bdev_channel *ch = bdev_io->internal.ch;
+	struct spdk_bdev_desc *desc = bdev_io->internal.desc;
 	int rc = 0;
 
 	assert(bdev_io->internal.f.has_bounce_buf);
@@ -1310,7 +1311,7 @@ bdev_io_pull_data(struct spdk_bdev_io *bdev_io)
 	/* If we need to exec an accel sequence or the IO uses a memory domain buffer and has a
 	 * sequence, append a copy operation making accel change the src/dst buffers of the previous
 	 * operation */
-	if (bdev_io_needs_sequence_exec(bdev_io->internal.desc, bdev_io) ||
+	if (bdev_io_needs_sequence_exec(desc, bdev_io) ||
 	    (bdev_io_use_accel_sequence(bdev_io) && bdev_io_use_memory_domain(bdev_io))) {
 		assert(bdev_io_use_accel_sequence(bdev_io));
 		if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
@@ -1336,6 +1337,38 @@ bdev_io_pull_data(struct spdk_bdev_io *bdev_io)
 
 		if (spdk_unlikely(rc != 0 && rc != -ENOMEM)) {
 			SPDK_ERRLOG("Failed to append copy to accel sequence: %p\n",
+				    bdev_io->internal.accel_sequence);
+		}
+	} else if (desc->opts.no_metadata && bdev_io->bdev->md_len != 0) {
+		assert(bdev_io->bdev->md_interleave);
+		if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
+			rc = spdk_accel_append_dif_generate_copy(&bdev_io->internal.accel_sequence, ch->accel_channel,
+					bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+					NULL, NULL,
+					bdev_io->internal.bounce_buf.orig_iovs,
+					bdev_io->internal.bounce_buf.orig_iovcnt,
+					bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain : NULL,
+					bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain_ctx : NULL,
+					bdev_io->u.bdev.num_blocks,
+					&bdev_io->u.bdev.dif_ctx,
+					NULL, NULL);
+		} else {
+			assert(bdev_io->type == SPDK_BDEV_IO_TYPE_READ);
+			rc = spdk_accel_append_dif_verify_copy(&bdev_io->internal.accel_sequence, ch->accel_channel,
+							       bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+							       NULL, NULL,
+							       bdev_io->internal.bounce_buf.orig_iovs,
+							       bdev_io->internal.bounce_buf.orig_iovcnt,
+							       bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain : NULL,
+							       bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain_ctx : NULL,
+							       bdev_io->u.bdev.num_blocks,
+							       &bdev_io->u.bdev.dif_ctx,
+							       &bdev_io->u.bdev.dif_err,
+							       NULL, NULL);
+		}
+
+		if (spdk_unlikely(rc != 0 && rc != -ENOMEM)) {
+			SPDK_ERRLOG("Failed to append generate/verify_copy to accel sequence: %p\n",
 				    bdev_io->internal.accel_sequence);
 		}
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
@@ -3692,9 +3725,15 @@ bdev_io_init_dif_ctx(struct spdk_bdev_io *bdev_io, struct spdk_bdev *bdev)
 				 0xFFFF, 0, 0, 0, &dif_opts);
 }
 
+static inline bool
+bdev_io_needs_metadata(struct spdk_bdev_desc *desc, struct spdk_bdev_io *bdev_io)
+{
+	return desc->opts.no_metadata && bdev_io->bdev->md_len != 0;
+}
+
 /* We need to allocate bounce buffer if bdev doesn't support memory domains, or if it does
  * support them, but we need to execute an accel sequence and the data buffer is from accel
- * memory domain (to avoid doing a push/pull from that domain).
+ * memory domain (to avoid doing a push/pull from that domain), or if metadata is necessary.
  */
 static inline bool
 bdev_io_needs_bounce_buffer(struct spdk_bdev_desc *desc, struct spdk_bdev_io *bdev_io)
@@ -3705,6 +3744,12 @@ bdev_io_needs_bounce_buffer(struct spdk_bdev_desc *desc, struct spdk_bdev_io *bd
 		     bdev_io->internal.memory_domain == spdk_accel_get_memory_domain())) {
 			return true;
 		}
+
+		return false;
+	}
+
+	if (bdev_io_needs_metadata(desc, bdev_io)) {
+		return true;
 	}
 
 	return false;
@@ -3719,10 +3764,59 @@ _bdev_io_ext_use_bounce_buffer(struct spdk_bdev_io *bdev_io)
 	 * Once read operation completes, we need to use memory_domain push functionality to
 	 * update data in original memory domain IO buffer
 	 * This IO request will go through a regular IO flow, so clear memory domains pointers */
-	assert(bdev_io->internal.f.has_memory_domain);
+	assert(bdev_io_use_memory_domain(bdev_io) ||
+	       bdev_io_needs_metadata(bdev_io->internal.desc, bdev_io));
+
 	bdev_io->u.bdev.memory_domain = NULL;
 	bdev_io->u.bdev.memory_domain_ctx = NULL;
 	bdev_io_get_bounce_buf(bdev_io, bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen);
+}
+
+static void
+bdev_io_get_accel_buf(struct spdk_bdev_io *bdev_io)
+{
+	struct spdk_bdev_channel *ch = bdev_io->internal.ch;
+
+	rc = spdk_accel_get_buf(ch->accel_channel,
+				bdev_io->internal.buf.len,
+				&bdev_io->internal.buf.ptr,
+				&bdev_io->u.bdev.memory_domain,
+				&bdev_io->u.bdev.memory_domain_ctx);
+	if (rc != 0) {
+		bdev_queue_nomem_io_head(ch->shared_resource, bdev_io, BDEV_IO_RETRY_GET_ACCEL_BUF);
+		return;
+	}
+
+
+	bdev_io->internal.status = SPDK_BDEV_IO_STATUS_FAILED;
+	bdev_io_complete_unsubmitted(bdev_io);
+}
+
+static inline bool
+bdev_io_needs_accel_buffer(struct spdk_bdev_desc *desc, struct spdk_bdev_io *bdev_io)
+{
+	if (!bdev_io_use_memory_domain(bdev_io)) {
+		return false;
+	}
+
+	if (bdev_io_needs_metadata(desc, bdev_io)) {
+		return true;
+	}
+
+	return false;
+}
+
+static inline void
+_bdev_io_ext_use_accel_buffer(struct spdk_bdev_io *bdev_io)
+{
+	assert(bdev_io_use_memory_domain(bdev_io));
+	assert(bdev_io_needs_metadata(bdev_io->internal.desc, bdev_io));
+
+	bdev_io->u.bdev.memory_domain = NULL;
+	bdev_io->u.bdev.memory_domain_ctx = NULL;
+	bdev_io->internal.buf.len = bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen;
+
+	bdev_io_get_accel_buf(bdev_io);
 }
 
 static inline void
@@ -3749,6 +3843,11 @@ _bdev_io_submit_ext(struct spdk_bdev_desc *desc, struct spdk_bdev_io *bdev_io)
 
 	if (bdev_io_needs_bounce_buffer(desc, bdev_io)) {
 		_bdev_io_ext_use_bounce_buffer(bdev_io);
+		return;
+	}
+
+	if (bdev_io_needs_accel_buffer(desc, bdev_io)) {
+		_bdev_io_ext_use_accel_buffer(bdev_io);
 		return;
 	}
 
