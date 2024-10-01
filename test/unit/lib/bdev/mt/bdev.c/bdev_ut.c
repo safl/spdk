@@ -1982,14 +1982,14 @@ struct timeout_io_cb_arg {
 static int
 bdev_channel_count_submitted_io(struct spdk_bdev_channel *ch)
 {
-	struct spdk_bdev_io *bdev_io;
+	struct spdk_bdev_io_stack_frame *frame;
 	int n = 0;
 
 	if (!ch) {
 		return -1;
 	}
 
-	TAILQ_FOREACH(bdev_io, &ch->io_submitted, stack_ptr->ch_link) {
+	TAILQ_FOREACH(frame, &ch->io_submitted, ch_link) {
 		n++;
 	}
 

@@ -419,6 +419,7 @@ struct spdk_bdev_module_claim {
 };
 
 typedef TAILQ_HEAD(, spdk_bdev_io) bdev_io_tailq_t;
+typedef TAILQ_HEAD(, spdk_bdev_io_stack_frame) bdev_io_stack_frame_tailq_t;
 typedef STAILQ_HEAD(, spdk_bdev_io) bdev_io_stailq_t;
 typedef TAILQ_HEAD(, lba_range) lba_range_tailq_t;
 
@@ -1084,7 +1085,7 @@ struct spdk_bdev_io_stack_frame {
 	/** Context that will be passed to the completion callback */
 	void *caller_ctx;
 
-	TAILQ_ENTRY(spdk_bdev_io) ch_link;
+	TAILQ_ENTRY(spdk_bdev_io_stack_frame) ch_link;
 
 	STAILQ_ENTRY(spdk_bdev_io) buf_link;
 

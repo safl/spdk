@@ -290,13 +290,13 @@ struct spdk_bdev_channel {
 	/*
 	 * List of all submitted I/Os including I/O that are generated via splitting.
 	 */
-	bdev_io_tailq_t		io_submitted;
+	bdev_io_stack_frame_tailq_t		io_submitted;
 
 	/*
 	 * List of spdk_bdev_io that are currently queued because they write to a locked
 	 * LBA range.
 	 */
-	bdev_io_tailq_t		io_locked;
+	bdev_io_stack_frame_tailq_t		io_locked;
 
 	/* List of I/Os with accel sequence being currently executed */
 	bdev_io_tailq_t		io_accel_exec;
@@ -448,14 +448,18 @@ static bool bdev_io_should_split(struct spdk_bdev_io *bdev_io);
 static inline void
 bdev_ch_add_to_io_submitted(struct spdk_bdev_io *bdev_io)
 {
-	TAILQ_INSERT_TAIL(&bdev_io->internal.ch->io_submitted, bdev_io, stack_ptr->ch_link);
+	assert(bdev_io == bdev_io->stack_ptr->bdev_io);
+	TAILQ_INSERT_TAIL(&bdev_io->internal.ch->io_submitted, bdev_io->stack_ptr, ch_link);
+	/* TODO: queue_depth also needs to be moved to stack frame */
 	bdev_io->internal.ch->queue_depth++;
 }
 
 static inline void
 bdev_ch_remove_from_io_submitted(struct spdk_bdev_io *bdev_io)
 {
-	TAILQ_REMOVE(&bdev_io->internal.ch->io_submitted, bdev_io, stack_ptr->ch_link);
+	assert(bdev_io == bdev_io->stack_ptr->bdev_io);
+	TAILQ_REMOVE(&bdev_io->internal.ch->io_submitted, bdev_io->stack_ptr, ch_link);
+	/* TODO: queue_depth also needs to be moved to stack frame */
 	bdev_io->internal.ch->queue_depth--;
 }
 
@@ -3658,7 +3662,7 @@ bdev_io_submit(struct spdk_bdev_io *bdev_io)
 
 		TAILQ_FOREACH(range, &ch->locked_ranges, tailq) {
 			if (bdev_io_range_is_locked(bdev_io, range)) {
-				TAILQ_INSERT_TAIL(&ch->io_locked, bdev_io, stack_ptr->ch_link);
+				TAILQ_INSERT_TAIL(&ch->io_locked, bdev_io->stack_ptr, ch_link);
 				return;
 			}
 		}
@@ -4090,6 +4094,7 @@ bdev_channel_poll_timeout_io(struct spdk_bdev_channel_iter *i, struct spdk_bdev 
 	struct poll_timeout_ctx *ctx  = _ctx;
 	struct spdk_bdev_channel *bdev_ch = __io_ch_to_bdev_ch(io_ch);
 	struct spdk_bdev_desc *desc = ctx->desc;
+	struct spdk_bdev_io_stack_frame *frame;
 	struct spdk_bdev_io *bdev_io;
 	uint64_t now;
 
@@ -4102,7 +4107,8 @@ bdev_channel_poll_timeout_io(struct spdk_bdev_channel_iter *i, struct spdk_bdev 
 	spdk_spin_unlock(&desc->spinlock);
 
 	now = spdk_get_ticks();
-	TAILQ_FOREACH(bdev_io, &bdev_ch->io_submitted, stack_ptr->ch_link) {
+	TAILQ_FOREACH(frame, &bdev_ch->io_submitted, ch_link) {
+		bdev_io = frame->bdev_io;
 		/* Exclude any I/O that are generated via splitting. */
 		if (bdev_io->internal.cb == bdev_io_split_done) {
 			continue;
@@ -7020,6 +7026,7 @@ static void
 bdev_abort_io_done(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_channel *channel = bdev_io->internal.ch;
+	struct spdk_bdev_io_stack_frame *frame;
 	struct spdk_bdev_io *parent_io = cb_arg;
 	struct spdk_bdev_io *bio_to_abort, *tmp_io;
 
@@ -7029,7 +7036,8 @@ bdev_abort_io_done(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 
 	if (!success) {
 		/* Check if the target I/O completed in the meantime. */
-		TAILQ_FOREACH(tmp_io, &channel->io_submitted, stack_ptr->ch_link) {
+		TAILQ_FOREACH(frame, &channel->io_submitted, ch_link) {
+			tmp_io = frame->bdev_io;
 			if (tmp_io == bio_to_abort) {
 				break;
 			}
@@ -7120,6 +7128,7 @@ _bdev_abort(struct spdk_bdev_io *parent_io)
 	struct spdk_bdev_desc *desc = parent_io->internal.desc;
 	struct spdk_bdev_channel *channel = parent_io->internal.ch;
 	void *bio_cb_arg;
+	struct spdk_bdev_io_stack_frame *frame;
 	struct spdk_bdev_io *bio_to_abort;
 	uint32_t matched_ios;
 	int rc;
@@ -7139,7 +7148,8 @@ _bdev_abort(struct spdk_bdev_io *parent_io)
 	matched_ios = 0;
 	parent_io->internal.status = SPDK_BDEV_IO_STATUS_SUCCESS;
 
-	TAILQ_FOREACH(bio_to_abort, &channel->io_submitted, stack_ptr->ch_link) {
+	TAILQ_FOREACH(frame, &channel->io_submitted, ch_link) {
+		bio_to_abort = frame->bdev_io;
 		if (bio_to_abort->internal.caller_ctx != bio_cb_arg) {
 			continue;
 		}
@@ -9950,6 +9960,7 @@ bdev_lock_lba_range_check_io(void *_i)
 	struct spdk_bdev_channel *ch = __io_ch_to_bdev_ch(_ch);
 	struct locked_lba_range_ctx *ctx = i->ctx;
 	struct lba_range *range = ctx->current_range;
+	struct spdk_bdev_io_stack_frame *frame;
 	struct spdk_bdev_io *bdev_io;
 
 	spdk_poller_unregister(&ctx->poller);
@@ -9958,7 +9969,8 @@ bdev_lock_lba_range_check_io(void *_i)
 	 * range.  But we need to wait until any outstanding IO overlapping with this range
 	 * are completed.
 	 */
-	TAILQ_FOREACH(bdev_io, &ch->io_submitted, stack_ptr->ch_link) {
+	TAILQ_FOREACH(frame, &ch->io_submitted, ch_link) {
+		bdev_io = frame->bdev_io;
 		if (bdev_io_range_is_locked(bdev_io, range)) {
 			ctx->poller = SPDK_POLLER_REGISTER(bdev_lock_lba_range_check_io, i, 100);
 			return SPDK_POLLER_BUSY;
@@ -10138,7 +10150,7 @@ bdev_unlock_lba_range_get_channel(struct spdk_bdev_channel_iter *i, struct spdk_
 {
 	struct spdk_bdev_channel *ch = __io_ch_to_bdev_ch(_ch);
 	struct locked_lba_range_ctx *ctx = _ctx;
-	TAILQ_HEAD(, spdk_bdev_io) io_locked;
+	TAILQ_HEAD(, spdk_bdev_io_stack_frame) io_locked;
 	struct spdk_bdev_io *bdev_io;
 	struct lba_range *range;
 
@@ -10167,10 +10179,13 @@ bdev_unlock_lba_range_get_channel(struct spdk_bdev_channel_iter *i, struct spdk_
 	 * we go for simplicity here.
 	 */
 	TAILQ_INIT(&io_locked);
-	TAILQ_SWAP(&ch->io_locked, &io_locked, spdk_bdev_io, stack_ptr->ch_link);
+	TAILQ_SWAP(&ch->io_locked, &io_locked, spdk_bdev_io_stack_frame, ch_link);
 	while (!TAILQ_EMPTY(&io_locked)) {
-		bdev_io = TAILQ_FIRST(&io_locked);
-		TAILQ_REMOVE(&io_locked, bdev_io, stack_ptr->ch_link);
+		struct spdk_bdev_io_stack_frame *frame;
+
+		frame = TAILQ_FIRST(&io_locked);
+		bdev_io = frame->bdev_io;
+		TAILQ_REMOVE(&io_locked, frame, ch_link);
 		bdev_io_submit(bdev_io);
 	}
 
@@ -10406,10 +10421,12 @@ bdev_channel_for_each_io(struct spdk_bdev_channel_iter *i, struct spdk_bdev *bde
 {
 	struct spdk_bdev_for_each_io_ctx *ctx = _ctx;
 	struct spdk_bdev_channel *bdev_ch = __io_ch_to_bdev_ch(io_ch);
+	struct spdk_bdev_io_stack_frame *frame;
 	struct spdk_bdev_io *bdev_io;
 	int rc = 0;
 
-	TAILQ_FOREACH(bdev_io, &bdev_ch->io_submitted, stack_ptr->ch_link) {
+	TAILQ_FOREACH(frame, &bdev_ch->io_submitted, ch_link) {
+		bdev_io = frame->bdev_io;
 		rc = ctx->fn(ctx->ctx, bdev_io);
 		if (rc != 0) {
 			break;

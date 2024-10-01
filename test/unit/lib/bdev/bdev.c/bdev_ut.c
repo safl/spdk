@@ -4573,14 +4573,14 @@ struct timeout_io_cb_arg {
 static int
 bdev_channel_count_submitted_io(struct spdk_bdev_channel *ch)
 {
-	struct spdk_bdev_io *bdev_io;
+	struct spdk_bdev_io_stack_frame *frame;
 	int n = 0;
 
 	if (!ch) {
 		return -1;
 	}
 
-	TAILQ_FOREACH(bdev_io, &ch->io_submitted, stack_ptr->ch_link) {
+	TAILQ_FOREACH(frame, &ch->io_submitted, ch_link) {
 		n++;
 	}
 
@@ -5219,6 +5219,7 @@ bdev_quiesce(void)
 	struct spdk_io_channel *io_ch;
 	struct spdk_bdev_channel *channel;
 	struct lba_range *range;
+	struct spdk_bdev_io_stack_frame *frame;
 	struct spdk_bdev_io *bdev_io;
 	int ctx1;
 	int rc;
@@ -5330,7 +5331,9 @@ bdev_quiesce(void)
 	rc = spdk_bdev_read_blocks(desc, io_ch, (void *)0xF000, 20, 1, io_done, &ctx1);
 	CU_ASSERT(rc == 0);
 
-	bdev_io = TAILQ_FIRST(&channel->io_locked);
+	frame = TAILQ_FIRST(&channel->io_locked);
+	SPDK_CU_ASSERT_FATAL(frame != NULL);
+	bdev_io = frame->bdev_io;
 	SPDK_CU_ASSERT_FATAL(bdev_io != NULL);
 	CU_ASSERT(bdev_io->u.bdev.offset_blocks == 20);
 	CU_ASSERT(bdev_io->u.bdev.num_blocks == 1);
