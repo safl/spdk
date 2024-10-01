@@ -1303,6 +1303,7 @@ static void
 bdev_io_pull_data(struct spdk_bdev_io *bdev_io)
 {
 	struct spdk_bdev_channel *ch = bdev_io->internal.ch;
+	struct spdk_bdev_desc *desc = bdev_io->internal.desc;
 	int rc = 0;
 
 	assert(bdev_io->internal.f.has_bounce_buf);
@@ -1336,6 +1337,38 @@ bdev_io_pull_data(struct spdk_bdev_io *bdev_io)
 
 		if (spdk_unlikely(rc != 0 && rc != -ENOMEM)) {
 			SPDK_ERRLOG("Failed to append copy to accel sequence: %p\n",
+				    bdev_io->internal.accel_sequence);
+		}
+	} else if (desc->opts.no_metadata && bdev_io->bdev->md_len != 0) {
+		assert(bdev_io->bdev->md_interleave);
+		if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
+			rc = spdk_accel_append_dif_generate_copy(&bdev_io->internal.accel_sequence, ch->accel_channel,
+					bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+					NULL, NULL,
+					bdev_io->internal.bounce_buf.orig_iovs,
+					bdev_io->internal.bounce_buf.orig_iovcnt,
+					bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain : NULL,
+					bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain_ctx : NULL,
+					bdev_io->u.bdev.num_blocks,
+					&bdev_io->u.bdev.dif_ctx,
+					NULL, NULL);
+		} else {
+			assert(bdev_io->type == SPDK_BDEV_IO_TYPE_READ);
+			rc = spdk_accel_append_dif_verify_copy(&bdev_io->internal.accel_sequence, ch->accel_channel,
+							       bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+							       NULL, NULL,
+							       bdev_io->internal.bounce_buf.orig_iovs,
+							       bdev_io->internal.bounce_buf.orig_iovcnt,
+							       bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain : NULL,
+							       bdev_io_use_memory_domain(bdev_io) ? bdev_io->internal.memory_domain_ctx : NULL,
+							       bdev_io->u.bdev.num_blocks,
+							       &bdev_io->u.bdev.dif_ctx,
+							       &bdev_io->u.bdev.dif_err,
+							       NULL, NULL);
+		}
+
+		if (spdk_unlikely(rc != 0 && rc != -ENOMEM)) {
+			SPDK_ERRLOG("Failed to append generate/verify_copy to accel sequence: %p\n",
 				    bdev_io->internal.accel_sequence);
 		}
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
@@ -3707,6 +3740,13 @@ bdev_io_needs_bounce_buffer(struct spdk_bdev_desc *desc, struct spdk_bdev_io *bd
 		     bdev_io->internal.memory_domain == spdk_accel_get_memory_domain())) {
 			return true;
 		}
+
+		return false;
+	}
+
+	if (desc->opts.no_metadata && bdev_io->bdev->md_len != 0) {
+		assert(bdev_io->bdev->md_interleave);
+		return true;
 	}
 
 	return false;
@@ -8413,7 +8453,7 @@ bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
 int
 spdk_bdev_open_ext_v2(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
 		      void *event_ctx, struct spdk_bdev_open_opts *opts,
-	       struct spdk_bdev_desc **_desc)
+		      struct spdk_bdev_desc **_desc)
 {
 	int rc;
 
