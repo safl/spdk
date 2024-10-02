@@ -675,6 +675,16 @@ uint32_t spdk_bdev_get_write_unit_size(const struct spdk_bdev *bdev);
 uint64_t spdk_bdev_get_num_blocks(const struct spdk_bdev *bdev);
 
 /**
+ * Get allocated size of thin block device in logical blocks.
+ *
+ * \param bdev Block device to query.
+ * \return Allocated size of thin bdev in logical blocks.
+ *
+ * Logical blocks are numbered from 0 to spdk_bdev_get_num_blocks(bdev) - 1, inclusive.
+ */
+uint64_t spdk_bdev_get_num_allocated_blocks(struct spdk_bdev *bdev);
+
+/**
  * Get the string of quality of service rate limit.
  *
  * \param type Type of rate limit to query.
