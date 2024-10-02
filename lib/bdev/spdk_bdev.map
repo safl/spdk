@@ -117,6 +117,7 @@
 	spdk_bdev_get_nvme_ctratt;
 	spdk_bdev_get_io_type_name;
 	spdk_bdev_get_io_type;
+	spdk_bdev_get_num_allocated_blocks;
 
 	# Public functions in bdev_module.h
 	spdk_bdev_register;
