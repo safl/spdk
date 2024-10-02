@@ -35,6 +35,7 @@ DEFINE_STUB(spdk_accel_get_memory_domain, struct spdk_memory_domain *, (void), N
 static bool g_memory_domain_pull_data_called;
 static bool g_memory_domain_push_data_called;
 static int g_accel_io_device;
+static uint64_t g_allocated_size;
 
 DEFINE_RETURN_MOCK(spdk_memory_domain_pull_data, int);
 int
@@ -7642,6 +7643,35 @@ get_device_stat_with_reset(void)
 	ut_fini_bdev();
 }
 
+static uint64_t
+stub_get_allocated_size(void *ctx)
+{
+	return g_allocated_size;
+}
+
+static void
+num_allocated_blocks_test(void)
+{
+	struct spdk_bdev *bdev;
+
+	ut_init_bdev(NULL);
+	bdev = allocate_bdev("num_allocated_blocks");
+	fn_table.get_allocated_size = NULL;
+	CU_ASSERT(bdev->blockcnt == spdk_bdev_get_num_allocated_blocks(bdev));
+
+	fn_table.get_allocated_size = stub_get_allocated_size;
+
+	g_allocated_size = 64 * bdev->blocklen;
+	CU_ASSERT(64 == spdk_bdev_get_num_allocated_blocks(bdev));
+
+	g_allocated_size = 4096 * bdev->blocklen;
+	CU_ASSERT(4096 == spdk_bdev_get_num_allocated_blocks(bdev));
+
+	g_allocated_size = 0;
+	free_bdev(bdev);
+	ut_fini_bdev();
+}
+
 int
 main(int argc, char **argv)
 {
@@ -7713,6 +7743,7 @@ main(int argc, char **argv)
 	CU_ADD_TEST(suite, examine_claimed);
 	CU_ADD_TEST(suite, get_numa_id);
 	CU_ADD_TEST(suite, get_device_stat_with_reset);
+	CU_ADD_TEST(suite, num_allocated_blocks_test);
 
 	allocate_cores(1);
 	allocate_threads(1);

@@ -10622,6 +10622,22 @@ spdk_bdev_copy_blocks(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 	return 0;
 }
 
+uint64_t
+spdk_bdev_get_num_allocated_blocks(struct spdk_bdev *bdev)
+{
+	uint64_t blockcnt;
+	uint64_t allocated_size;
+
+	if (bdev->fn_table->get_allocated_size) {
+		allocated_size = bdev->fn_table->get_allocated_size(bdev->ctxt);
+		blockcnt = spdk_divide_round_up(allocated_size, bdev->blocklen);
+	} else {
+		blockcnt = bdev->blockcnt;
+	}
+
+	return blockcnt;
+}
+
 SPDK_LOG_REGISTER_COMPONENT(bdev)
 
 static void

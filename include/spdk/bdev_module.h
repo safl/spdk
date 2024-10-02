@@ -373,6 +373,9 @@ struct spdk_bdev_fn_table {
 
 	/** Check if bdev can handle spdk_accel_sequence to handle I/O of specific type. */
 	bool (*accel_sequence_supported)(void *ctx, enum spdk_bdev_io_type type);
+
+	/** Get allocated size for thin bdev. */
+	uint64_t (*get_allocated_size)(void *ctx);
 };
 
 /** bdev I/O completion status */
