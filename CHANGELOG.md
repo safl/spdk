@@ -24,6 +24,8 @@ Added support for lz4 compression.
 `spdk_bdev_io_get_aux_buf` and `spdk_bdev_io_put_aux_buf` are deprecated and
 will be removed in the 25.01 release. We do not believe these are in use currently.
 
+Added `spdk_bdev_get_num_allocated_blocks()` to get allocated size of thin bdev in logical blocks.
+
 ### bdev_compress
 
 Added support for specifying compression algorithm and level.
