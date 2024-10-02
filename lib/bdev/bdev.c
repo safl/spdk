@@ -1875,8 +1875,8 @@ spdk_bdev_io_get_buf(struct spdk_bdev_io *bdev_io, spdk_bdev_io_get_buf_cb cb, u
 }
 
 static void
-_bdev_memory_domain_get_io_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
-			      bool success)
+bdev_io_get_bounce_buf_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io,
+			  bool success)
 {
 	if (!success) {
 		SPDK_ERRLOG("Failed to get data buffer, completing IO\n");
@@ -1900,11 +1900,9 @@ _bdev_memory_domain_get_io_cb(struct spdk_io_channel *ch, struct spdk_bdev_io *b
 }
 
 static void
-_bdev_memory_domain_io_get_buf(struct spdk_bdev_io *bdev_io, spdk_bdev_io_get_buf_cb cb,
-			       uint64_t len)
+bdev_io_get_bounce_buf(struct spdk_bdev_io *bdev_io, uint64_t len)
 {
-	assert(cb != NULL);
-	bdev_io->internal.get_buf_cb = cb;
+	bdev_io->internal.get_buf_cb = bdev_io_get_bounce_buf_cb;
 
 	bdev_io_get_buf(bdev_io, len);
 }
@@ -3727,8 +3725,7 @@ _bdev_io_ext_use_bounce_buffer(struct spdk_bdev_io *bdev_io)
 	assert(bdev_io->internal.f.has_memory_domain);
 	bdev_io->u.bdev.memory_domain = NULL;
 	bdev_io->u.bdev.memory_domain_ctx = NULL;
-	_bdev_memory_domain_io_get_buf(bdev_io, _bdev_memory_domain_get_io_cb,
-				       bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen);
+	bdev_io_get_bounce_buf(bdev_io, bdev_io->u.bdev.num_blocks * bdev_io->bdev->blocklen);
 }
 
 static inline void
