@@ -90,6 +90,7 @@ DEFINE_STUB_V(spdk_reduce_vol_init, (struct spdk_reduce_vol_params *params,
 				     spdk_reduce_vol_op_with_handle_complete cb_fn, void *cb_arg));
 DEFINE_STUB_V(spdk_reduce_vol_destroy, (struct spdk_reduce_backing_dev *backing_dev,
 					spdk_reduce_vol_op_complete cb_fn, void *cb_arg));
+DEFINE_STUB(spdk_bdev_get_num_allocated_blocks, uint64_t, (struct spdk_bdev *bdev), 0);
 
 int g_small_size_counter = 0;
 int g_small_size_modify = 0;

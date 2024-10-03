@@ -1007,6 +1007,15 @@ vbdev_compress_get_ctx_size(void)
 	return sizeof(struct comp_bdev_io);
 }
 
+static uint64_t
+vbdev_compress_get_allocated_size(void *ctx)
+{
+	struct vbdev_compress *comp_bdev = ctx;
+	struct spdk_bdev *base_bdev = comp_bdev->base_bdev;
+
+	return spdk_bdev_get_num_allocated_blocks(base_bdev) * base_bdev->blocklen;
+}
+
 /* When we register our bdev this is how we specify our entry points. */
 static const struct spdk_bdev_fn_table vbdev_compress_fn_table = {
 	.destruct		= vbdev_compress_destruct,
@@ -1015,6 +1024,7 @@ static const struct spdk_bdev_fn_table vbdev_compress_fn_table = {
 	.get_io_channel		= vbdev_compress_get_io_channel,
 	.dump_info_json		= vbdev_compress_dump_info_json,
 	.write_config_json	= NULL,
+	.get_allocated_size     = vbdev_compress_get_allocated_size,
 };
 
 static struct spdk_bdev_module compress_if = {
