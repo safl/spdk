@@ -1057,6 +1057,25 @@ vbdev_lvol_get_memory_domains(void *ctx, struct spdk_memory_domain **domains, in
 	return base_cnt + esnap_cnt;
 }
 
+static uint64_t
+vbdev_lvol_get_allocated_size(void *ctx)
+{
+	struct spdk_lvol *lvol = ctx;
+	struct spdk_blob *blob;
+	uint64_t allocated_clusters;
+	bool is_thin;
+
+	blob = lvol->blob;
+	is_thin = spdk_blob_is_thin_provisioned(blob);
+	if (is_thin) {
+		allocated_clusters = spdk_blob_get_num_allocated_clusters(blob);
+	} else {
+		allocated_clusters = spdk_blob_get_num_clusters(blob);
+	}
+
+	return allocated_clusters * spdk_bs_get_cluster_size(lvol->lvol_store->blobstore);
+}
+
 static struct spdk_bdev_fn_table vbdev_lvol_fn_table = {
 	.destruct		= vbdev_lvol_unregister,
 	.io_type_supported	= vbdev_lvol_io_type_supported,
@@ -1065,6 +1084,7 @@ static struct spdk_bdev_fn_table vbdev_lvol_fn_table = {
 	.dump_info_json		= vbdev_lvol_dump_info_json,
 	.write_config_json	= vbdev_lvol_write_config_json,
 	.get_memory_domains	= vbdev_lvol_get_memory_domains,
+	.get_allocated_size     = vbdev_lvol_get_allocated_size,
 };
 
 static void
