@@ -2412,7 +2412,7 @@ bs_load(void)
 
 	/* Load should fail for device with an unsupported blocklen */
 	dev = init_dev();
-	dev->blocklen = BLOCKLEN * 2;
+	dev->blocklen = g_phys_blocklen * 2;
 	spdk_bs_load(dev, NULL, bs_op_with_handle_complete, NULL);
 	poll_threads();
 	CU_ASSERT(g_bserrno == -EINVAL);
@@ -2770,7 +2770,8 @@ bs_load_after_failed_grow(void)
 	super_block = (struct spdk_bs_super_block *)g_dev_buffer;
 	CU_ASSERT(super_block->clean == 1);
 
-	mask = (struct spdk_bs_md_mask *)(g_dev_buffer + super_block->used_cluster_mask_start * BLOCKLEN);
+	mask = (struct spdk_bs_md_mask *)(g_dev_buffer + super_block->used_cluster_mask_start *
+					  g_phys_blocklen);
 	CU_ASSERT(mask->type == SPDK_MD_MASK_TYPE_USED_CLUSTERS);
 	CU_ASSERT(mask->length == super_block->size / super_block->cluster_size);
 
@@ -2993,7 +2994,7 @@ bs_test_recover_cluster_count(void)
 	super_block.length = 0x1000;
 	super_block.clean = 0;
 	super_block.super_blob = 0xFFFFFFFFFFFFFFFF;
-	super_block.cluster_size = BLOCKLEN;
+	super_block.cluster_size = g_phys_blocklen;
 	super_block.used_page_mask_start = 0x01;
 	super_block.used_page_mask_len = 0x01;
 	super_block.used_cluster_mask_start = 0x02;
@@ -3350,7 +3351,7 @@ bs_cluster_sz(void)
 	 */
 	dev = init_dev();
 	spdk_bs_opts_init(&opts, sizeof(opts));
-	opts.cluster_sz = SPDK_BS_PAGE_SIZE;
+	opts.cluster_sz = g_phys_blocklen;
 
 	/* Initialize a new blob store */
 	spdk_bs_init(dev, &opts, bs_op_with_handle_complete, NULL);
@@ -3364,7 +3365,7 @@ bs_cluster_sz(void)
 	 */
 	dev = init_dev();
 	spdk_bs_opts_init(&opts, sizeof(opts));
-	opts.cluster_sz = SPDK_BS_PAGE_SIZE - 1;
+	opts.cluster_sz = g_phys_blocklen - 1;
 
 	/* Initialize a new blob store */
 	spdk_bs_init(dev, &opts, bs_op_with_handle_complete, NULL);
@@ -3463,7 +3464,7 @@ bs_resize_md(void)
 
 	dev = init_dev();
 	spdk_bs_opts_init(&opts, sizeof(opts));
-	opts.cluster_sz = CLUSTER_PAGE_COUNT * BLOCKLEN;
+	opts.cluster_sz = CLUSTER_PAGE_COUNT * g_phys_blocklen;
 	cluster_sz = opts.cluster_sz;
 
 	/* Initialize a new blob store */
@@ -3648,7 +3649,7 @@ blob_crc(void)
 	CU_ASSERT(g_bserrno == 0);
 
 	page_num = bs_blobid_to_page(blobid);
-	index = DEV_BUFFER_BLOCKLEN * (bs->md_start + page_num);
+	index = g_phys_blocklen * (bs->md_start + page_num);
 	page = (struct spdk_blob_md_page *)&g_dev_buffer[index];
 	page->crc = 0;
 
@@ -7428,7 +7429,7 @@ blob_io_unit(void)
 	/* Create dev with 512 bytes io unit size */
 
 	spdk_bs_opts_init(&bsopts, sizeof(bsopts));
-	bsopts.cluster_sz = SPDK_BS_PAGE_SIZE * 4;	/* 8 * 4 = 32 io_unit */
+	bsopts.cluster_sz = g_phys_blocklen * 4;	/* 8 * 4 = 32 io_unit */
 	snprintf(bsopts.bstype.bstype, sizeof(bsopts.bstype.bstype), "TESTTYPE");
 
 	/* Try to initialize a new blob store with unsupported io_unit */
@@ -7580,7 +7581,7 @@ blob_io_unit_compatibility(void)
 	/* Create dev with 512 bytes io unit size */
 
 	spdk_bs_opts_init(&bsopts, sizeof(bsopts));
-	bsopts.cluster_sz = SPDK_BS_PAGE_SIZE * 4;	/* 8 * 4 = 32 io_unit */
+	bsopts.cluster_sz = g_phys_blocklen * 4;	/* 8 * 4 = 32 io_unit */
 	snprintf(bsopts.bstype.bstype, sizeof(bsopts.bstype.bstype), "TESTTYPE");
 
 	/* Try to initialize a new blob store with unsupported io_unit */
@@ -8365,7 +8366,7 @@ blob_esnap_io_size(uint32_t bs_blksz, uint32_t esnap_blksz)
 	struct spdk_blob_opts	opts;
 	struct ut_esnap_opts	esnap_opts;
 	struct spdk_blob	*blob;
-	const uint32_t		cluster_sz = 16 * 1024;
+	const uint32_t		cluster_sz = 4 * g_phys_blocklen;
 	const uint64_t		esnap_num_clusters = 4;
 	const uint32_t		esnap_sz = cluster_sz * esnap_num_clusters;
 	const uint64_t		esnap_num_blocks = esnap_sz / esnap_blksz;
@@ -8503,7 +8504,7 @@ blob_esnap_io_512_4096(void)
 	struct spdk_bs_opts	bs_opts;
 	struct spdk_blob_opts	blob_opts;
 	struct ut_esnap_opts	esnap_opts;
-	uint64_t		cluster_sz = 16 * 1024;
+	uint64_t		cluster_sz = 4 * g_phys_blocklen;
 	uint32_t		bs_blksz = 512;
 	uint32_t		esnap_blksz = BLOCKLEN;
 	uint64_t		esnap_num_blocks = 64;
@@ -9315,7 +9316,7 @@ blob_esnap_clone_resize(void)
 	struct ut_esnap_opts esnap_opts;
 	struct spdk_blob *blob;
 	uint32_t block, esnap_blksz = 512, bs_blksz = 512;
-	const uint32_t cluster_sz = 16 * 1024;
+	const uint32_t cluster_sz = 4 * g_phys_blocklen;
 	const uint64_t esnap_num_clusters = 4;
 	const uint32_t esnap_sz = cluster_sz * esnap_num_clusters;
 	const uint64_t esnap_num_blocks = esnap_sz / esnap_blksz;
@@ -9895,7 +9896,7 @@ suite_esnap_bs_setup(void)
 	dev = init_dev();
 	memset(g_dev_buffer, 0, DEV_BUFFER_SIZE);
 	spdk_bs_opts_init(&bs_opts, sizeof(bs_opts));
-	bs_opts.cluster_sz = 16 * 1024;
+	bs_opts.cluster_sz = 4 * g_phys_blocklen;
 	bs_opts.esnap_bs_dev_create = ut_esnap_create;
 	spdk_bs_init(dev, &bs_opts, bs_op_with_handle_complete, NULL);
 	poll_threads();
@@ -9987,6 +9988,7 @@ ut_setup_config_nocopy_noextent(void)
 {
 	g_dev_copy_enabled = false;
 	g_use_extent_table = false;
+	g_phys_blocklen = 4096;
 
 	return 0;
 }
@@ -9996,15 +9998,28 @@ ut_setup_config_nocopy_extent(void)
 {
 	g_dev_copy_enabled = false;
 	g_use_extent_table = true;
+	g_phys_blocklen = 4096;
 
 	return 0;
 }
+
+static int
+ut_setup_config_nocopy_extent_16k_phys(void)
+{
+	g_dev_copy_enabled = false;
+	g_use_extent_table = true;
+	g_phys_blocklen = 16384;
+
+	return 0;
+}
+
 
 static int
 ut_setup_config_copy_noextent(void)
 {
 	g_dev_copy_enabled = true;
 	g_use_extent_table = false;
+	g_phys_blocklen = 4096;
 
 	return 0;
 }
@@ -10014,6 +10029,7 @@ ut_setup_config_copy_extent(void)
 {
 	g_dev_copy_enabled = true;
 	g_use_extent_table = true;
+	g_phys_blocklen = 4096;
 
 	return 0;
 }
@@ -10033,6 +10049,7 @@ main(int argc, char **argv)
 	struct ut_config	configs[] = {
 		{"nocopy_noextent", ut_setup_config_nocopy_noextent},
 		{"nocopy_extent", ut_setup_config_nocopy_extent},
+		{"nocopy_extent_16k_phys", ut_setup_config_nocopy_extent_16k_phys},
 		{"copy_noextent", ut_setup_config_copy_noextent},
 		{"copy_extent", ut_setup_config_copy_extent},
 	};
