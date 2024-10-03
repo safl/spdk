@@ -463,6 +463,8 @@ static int
 vbdev_compress_dump_info_json(void *ctx, struct spdk_json_write_ctx *w)
 {
 	struct vbdev_compress *comp_bdev = (struct vbdev_compress *)ctx;
+	struct spdk_bdev *base_bdev = comp_bdev->base_bdev;
+	uint64_t allocated_blocks;
 	char *comp_algo = NULL;
 
 	if (comp_bdev->params.comp_algo == SPDK_ACCEL_COMP_ALGO_LZ4) {
@@ -473,6 +475,8 @@ vbdev_compress_dump_info_json(void *ctx, struct spdk_json_write_ctx *w)
 		assert(false);
 	}
 
+	allocated_blocks = spdk_bdev_get_num_allocated_blocks(comp_bdev->base_bdev);
+
 	spdk_json_write_name(w, "compress");
 	spdk_json_write_object_begin(w);
 	spdk_json_write_named_string(w, "name", spdk_bdev_get_name(&comp_bdev->comp_bdev));
@@ -482,6 +486,7 @@ vbdev_compress_dump_info_json(void *ctx, struct spdk_json_write_ctx *w)
 	spdk_json_write_named_uint32(w, "comp_level", comp_bdev->params.comp_level);
 	spdk_json_write_named_uint32(w, "chunk_size", comp_bdev->params.chunk_size);
 	spdk_json_write_named_uint32(w, "backing_io_unit_size", comp_bdev->params.backing_io_unit_size);
+	spdk_json_write_named_uint64(w, "allocated_size", base_bdev->blocklen * allocated_blocks);
 	spdk_json_write_object_end(w);
 
 	return 0;
