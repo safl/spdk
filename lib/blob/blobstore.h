@@ -156,6 +156,7 @@ struct spdk_blob {
 struct spdk_blob_store {
 	uint64_t			md_start; /* Offset from beginning of disk, in pages */
 	uint32_t			md_len; /* Count, in pages */
+	uint32_t                        md_page_size; /* Metadata page size */
 
 	struct spdk_io_channel		*md_channel;
 	uint32_t			max_channel_ops;
@@ -424,7 +425,9 @@ struct spdk_bs_super_block {
 	uint64_t	size; /* size of blobstore in bytes */
 	uint32_t	io_unit_size; /* Size of io unit in bytes */
 
-	uint8_t		reserved[4000];
+	uint32_t        md_page_size; /* Size in bytes */
+
+	uint8_t		reserved[3996];
 	uint32_t	crc;
 };
 SPDK_STATIC_ASSERT(sizeof(struct spdk_bs_super_block) == 0x1000, "Invalid super block size");
@@ -473,7 +476,7 @@ bs_dev_byte_to_lba(struct spdk_bs_dev *bs_dev, uint64_t length)
 static inline uint64_t
 bs_page_to_lba(struct spdk_blob_store *bs, uint64_t page)
 {
-	return page * SPDK_BS_PAGE_SIZE / bs->dev->blocklen;
+	return page * bs->md_page_size / bs->dev->blocklen;
 }
 
 static inline uint64_t
@@ -484,15 +487,15 @@ bs_md_page_to_lba(struct spdk_blob_store *bs, uint32_t page)
 }
 
 static inline uint64_t
-bs_dev_page_to_lba(struct spdk_bs_dev *bs_dev, uint64_t page)
+bs_dev_page_to_lba(struct spdk_blob *blob, uint64_t page)
 {
-	return page * SPDK_BS_PAGE_SIZE / bs_dev->blocklen;
+	return page * blob->bs->md_page_size / blob->back_bs_dev->blocklen;
 }
 
 static inline uint64_t
 bs_io_unit_per_page(struct spdk_blob_store *bs)
 {
-	return SPDK_BS_PAGE_SIZE / bs->io_unit_size;
+	return bs->md_page_size / bs->io_unit_size;
 }
 
 static inline uint64_t
