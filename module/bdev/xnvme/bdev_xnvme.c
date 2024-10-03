@@ -366,6 +366,10 @@ create_xnvme_bdev(const char *name, const char *filename, const char *io_mechani
 		SPDK_ERRLOG("Unable to open xNVMe device %s\n", filename);
 		goto error_return;
 	}
+	if (xnvme_dev_get_csi(xnvme->dev) != XNVME_SPEC_CSI_NVM) {
+		SPDK_ERRLOG("bdev_xnvme only supports CSI = NVM\n");
+		goto error_return;
+	}
 
 	xnvme->nsid = xnvme_dev_get_nsid(xnvme->dev);
 
