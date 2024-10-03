@@ -18,6 +18,7 @@ int g_lvolerrno;
 int g_lvserrno;
 int g_cluster_size;
 int g_num_clusters = 0;
+int g_num_allocated_clusters = 0;
 int g_registered_bdevs;
 int g_num_lvols = 0;
 int g_lvol_open_enomem = -1;
@@ -39,6 +40,7 @@ bool g_bdev_alias_already_exists = false;
 bool g_lvs_with_name_already_exists = false;
 bool g_ext_api_called;
 bool g_bdev_is_missing = false;
+bool g_lvol_thin = false;
 
 DEFINE_STUB_V(spdk_bdev_module_fini_start_done, (void));
 DEFINE_STUB_V(spdk_bdev_update_bs_blockcnt, (struct spdk_bs_dev *bs_dev));
@@ -56,7 +58,6 @@ DEFINE_STUB(spdk_lvs_esnap_missing_add, int,
 	     uint32_t id_len), -ENOTSUP);
 DEFINE_STUB(spdk_blob_get_esnap_bs_dev, struct spdk_bs_dev *, (const struct spdk_blob *blob), NULL);
 DEFINE_STUB(spdk_lvol_is_degraded, bool, (const struct spdk_lvol *lvol), false);
-DEFINE_STUB(spdk_blob_get_num_allocated_clusters, uint64_t, (struct spdk_blob *blob), 0);
 
 struct spdk_blob {
 	uint64_t	id;
@@ -66,6 +67,12 @@ struct spdk_blob {
 struct spdk_blob_store {
 	spdk_bs_esnap_dev_create esnap_bs_dev_create;
 };
+
+uint64_t
+spdk_blob_get_num_allocated_clusters(struct spdk_blob *blob)
+{
+	return g_num_allocated_clusters;
+}
 
 const struct spdk_bdev_aliases_list *
 spdk_bdev_get_aliases(const struct spdk_bdev *bdev)
@@ -332,7 +339,7 @@ spdk_blob_is_clone(struct spdk_blob *blob)
 bool
 spdk_blob_is_thin_provisioned(struct spdk_blob *blob)
 {
-	return false;
+	return g_lvol_thin;
 }
 
 static struct spdk_lvol *_lvol_create(struct spdk_lvol_store *lvs);
@@ -2069,6 +2076,39 @@ ut_lvol_set_external_parent(void)
 	CU_ASSERT(g_lvolerrno == 0);
 }
 
+static void
+ut_vbdev_lvol_get_allocated_size(void)
+{
+	uint64_t allocated_size;
+	uint64_t lvol_size;
+
+	g_lvol = calloc(1, sizeof(struct spdk_lvol));
+	SPDK_CU_ASSERT_FATAL(g_lvol != NULL);
+	g_lvol->lvol_store = calloc(1, sizeof(struct spdk_lvol_store));
+	SPDK_CU_ASSERT_FATAL(g_lvol->lvol_store != NULL);
+
+	g_cluster_size = SPDK_LVS_OPTS_CLUSTER_SZ;
+
+	g_lvol_thin = false;
+	g_num_clusters = 10;
+	lvol_size = g_num_clusters * g_cluster_size;
+	allocated_size = vbdev_lvol_get_allocated_size(g_lvol);
+	CU_ASSERT(lvol_size == allocated_size);
+
+	g_lvol_thin = true;
+	g_num_allocated_clusters = 5;
+	lvol_size = g_cluster_size * g_num_allocated_clusters;
+	allocated_size = vbdev_lvol_get_allocated_size(g_lvol);
+	CU_ASSERT(lvol_size == allocated_size);
+
+	g_lvol_thin = false;
+	g_cluster_size = 0;
+	g_num_clusters = 0;
+	g_num_allocated_clusters = 0;
+	free(g_lvol->lvol_store);
+	free(g_lvol);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -2102,6 +2142,7 @@ main(int argc, char **argv)
 	CU_ADD_TEST(suite, ut_lvol_esnap_clone_bad_args);
 	CU_ADD_TEST(suite, ut_lvol_shallow_copy);
 	CU_ADD_TEST(suite, ut_lvol_set_external_parent);
+	CU_ADD_TEST(suite, ut_vbdev_lvol_get_allocated_size);
 
 	allocate_threads(1);
 	set_thread(0);
