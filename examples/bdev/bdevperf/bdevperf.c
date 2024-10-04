@@ -1772,10 +1772,13 @@ static void
 _bdevperf_construct_job(void *ctx)
 {
 	struct bdevperf_job *job = ctx;
+	struct spdk_bdev_open_opts opts = {};
 	int rc;
 
-	rc = spdk_bdev_open_ext(spdk_bdev_get_name(job->bdev), true, bdevperf_bdev_removed, job,
-				&job->bdev_desc);
+	opts.size = sizeof(opts);
+
+	rc = spdk_bdev_open_ext_v2(spdk_bdev_get_name(job->bdev), true, bdevperf_bdev_removed, job,
+				   &opts, &job->bdev_desc);
 	if (rc != 0) {
 		SPDK_ERRLOG("Could not open leaf bdev %s, error=%d\n", spdk_bdev_get_name(job->bdev), rc);
 		g_run_rc = -EINVAL;
