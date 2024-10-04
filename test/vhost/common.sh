@@ -217,6 +217,8 @@ function vhost_kill() {
 	fi
 
 	timing_enter vhost_kill
+	get_jobs
+
 	local vhost_pid
 	vhost_pid="$(cat $vhost_pid_file)"
 	notice "killing vhost (PID $vhost_pid) app"
@@ -240,6 +242,13 @@ function vhost_kill() {
 				echo "."
 			done
 		fi
+		# If this PID is our child, we should attempt to verify its status
+		# to catch any "silent" crashes that may happen upon termination.
+		if [[ -n ${jobs[vhost_pid]} ]]; then
+			notice "Checking status of ${jobs[vhost_pid]}"
+			wait "$vhost_pid" || rc=1
+		fi
+
 	elif kill -0 $vhost_pid; then
 		error "vhost NOT killed - you need to kill it manually"
 		rc=1

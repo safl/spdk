@@ -1662,6 +1662,15 @@ function get_zoned_devs() {
 	done
 }
 
+function get_jobs() {
+	local job=()
+	local -g jobs
+
+	while read -ra job; do
+		jobs[job[1]]=${job[*]:2}
+	done < <(jobs -lr)
+}
+
 # Define temp storage for all the tests. Look for 2GB at minimum
 set_test_storage "${TEST_MIN_STORAGE_SIZE:-$((1 << 31))}"
 
