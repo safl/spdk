@@ -346,6 +346,7 @@ struct spdk_bdev_desc {
 	bool				accel_sequence_supported[SPDK_BDEV_NUM_IO_TYPES];
 	struct spdk_spinlock		spinlock;
 	uint32_t			refs;
+	struct spdk_bdev_open_opts	opts;
 	TAILQ_HEAD(, media_event_entry)	pending_media_events;
 	TAILQ_HEAD(, media_event_entry)	free_media_events;
 	struct media_event_entry	*media_events_buffer;
@@ -8208,18 +8209,81 @@ bdev_open(struct spdk_bdev *bdev, bool write, struct spdk_bdev_desc *desc)
 	return 0;
 }
 
+static void
+bdev_open_opts_get_defaults(struct spdk_bdev_open_opts *opts, size_t opts_size)
+{
+	if (!opts) {
+		SPDK_ERRLOG("opts should not be NULL.\n");
+		return;
+	}
+
+	if (!opts_size) {
+		SPDK_ERRLOG("opts_size should not be zero.\n");
+		return;
+	}
+
+	memset(opts, 0, opts_size);
+	opts->size = opts_size;
+
+#define FIELD_OK(field) \
+	offsetof(struct spdk_bdev_open_opts, field) + sizeof(opts->field) <= opts_size
+
+#define SET_FIELD(field, value) \
+	if (FIELD_OK(field)) { \
+		opts->field = value; \
+	} \
+
+	SET_FIELD(no_metadata, false);
+
+#undef FIELD_OK
+#undef SET_FIELD
+}
+
+static void
+bdev_open_opts_copy(struct spdk_bdev_open_opts *opts,
+		    const struct spdk_bdev_open_opts *user_opts)
+{
+#define FIELD_OK(field) \
+	offsetof(struct spdk_bdev_open_opts, field) + sizeof(opts->field) <= user_opts->size
+
+#define SET_FIELD(field) \
+	if (FIELD_OK(field)) { \
+		opts->field = user_opts->field; \
+	} \
+
+	SET_FIELD(no_metadata);
+
+	opts->size = user_opts->size;
+
+	/* We should not remove this statement, but need to update the assert statement
+	 * if we add a new field, and also add a corresponding SET_FIELD statement.
+	 */
+	SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_open_opts) == 16, "Incorrect size");
+
+#undef FIELD_OK
+#undef SET_FIELD
+}
+
 static int
 bdev_desc_alloc(struct spdk_bdev *bdev, spdk_bdev_event_cb_t event_cb, void *event_ctx,
-		struct spdk_bdev_desc **_desc)
+		struct spdk_bdev_open_opts *user_opts, struct spdk_bdev_desc **_desc)
 {
 	struct spdk_bdev_desc *desc;
+	struct spdk_bdev_open_opts opts;
 	unsigned int i;
+
+	bdev_open_opts_get_defaults(&opts, sizeof(opts));
+	if (user_opts != NULL) {
+		bdev_open_opts_copy(&opts, user_opts);
+	}
 
 	desc = calloc(1, sizeof(*desc));
 	if (desc == NULL) {
 		SPDK_ERRLOG("Failed to allocate memory for bdev descriptor\n");
 		return -ENOMEM;
 	}
+
+	desc->opts = opts;
 
 	TAILQ_INIT(&desc->pending_media_events);
 	TAILQ_INIT(&desc->free_media_events);
@@ -8228,6 +8292,14 @@ bdev_desc_alloc(struct spdk_bdev *bdev, spdk_bdev_event_cb_t event_cb, void *eve
 	desc->callback.event_fn = event_cb;
 	desc->callback.ctx = event_ctx;
 	spdk_spin_init(&desc->spinlock);
+
+	if (desc->opts.no_metadata) {
+		if (spdk_bdev_is_md_separate(bdev)) {
+			SPDK_ERRLOG("no_metadata option is not supported with separate metadata.\n");
+			bdev_desc_free(desc);
+			return -EINVAL;
+		}
+	}
 
 	if (bdev->media_events) {
 		desc->media_events_buffer = calloc(MEDIA_EVENT_POOL_SIZE,
@@ -8259,7 +8331,8 @@ bdev_desc_alloc(struct spdk_bdev *bdev, spdk_bdev_event_cb_t event_cb, void *eve
 
 static int
 bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
-	      void *event_ctx, struct spdk_bdev_desc **_desc)
+	      void *event_ctx, struct spdk_bdev_open_opts *opts,
+	      struct spdk_bdev_desc **_desc)
 {
 	struct spdk_bdev_desc *desc;
 	struct spdk_bdev *bdev;
@@ -8272,7 +8345,7 @@ bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
 		return -ENODEV;
 	}
 
-	rc = bdev_desc_alloc(bdev, event_cb, event_ctx, &desc);
+	rc = bdev_desc_alloc(bdev, event_cb, event_ctx, opts, &desc);
 	if (rc != 0) {
 		return rc;
 	}
@@ -8289,8 +8362,9 @@ bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
 }
 
 int
-spdk_bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
-		   void *event_ctx, struct spdk_bdev_desc **_desc)
+spdk_bdev_open_ext_v2(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
+		      void *event_ctx, struct spdk_bdev_open_opts *opts,
+		      struct spdk_bdev_desc **_desc)
 {
 	int rc;
 
@@ -8300,10 +8374,17 @@ spdk_bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event
 	}
 
 	spdk_spin_lock(&g_bdev_mgr.spinlock);
-	rc = bdev_open_ext(bdev_name, write, event_cb, event_ctx, _desc);
+	rc = bdev_open_ext(bdev_name, write, event_cb, event_ctx, opts, _desc);
 	spdk_spin_unlock(&g_bdev_mgr.spinlock);
 
 	return rc;
+}
+
+int
+spdk_bdev_open_ext(const char *bdev_name, bool write, spdk_bdev_event_cb_t event_cb,
+		   void *event_ctx, struct spdk_bdev_desc **_desc)
+{
+	return spdk_bdev_open_ext_v2(bdev_name, write, event_cb, event_ctx, NULL, _desc);
 }
 
 struct spdk_bdev_open_async_ctx {
@@ -8380,7 +8461,7 @@ _bdev_open_async(struct spdk_bdev_open_async_ctx *ctx)
 	}
 
 	ctx->rc = bdev_open_ext(ctx->bdev_name, ctx->write, ctx->event_cb, ctx->event_ctx,
-				&ctx->desc);
+				NULL, &ctx->desc);
 	if (ctx->rc == 0 || ctx->opts.timeout_ms == 0) {
 		goto exit;
 	}
@@ -8634,7 +8715,7 @@ spdk_bdev_register(struct spdk_bdev *bdev)
 	}
 
 	/* A descriptor is opened to prevent bdev deletion during examination */
-	rc = bdev_desc_alloc(bdev, _tmp_bdev_event_cb, NULL, &desc);
+	rc = bdev_desc_alloc(bdev, _tmp_bdev_event_cb, NULL, NULL, &desc);
 	if (rc != 0) {
 		spdk_bdev_unregister(bdev, NULL, NULL);
 		return rc;
@@ -9088,7 +9169,7 @@ spdk_for_each_bdev(void *ctx, spdk_for_each_bdev_fn fn)
 	spdk_spin_lock(&g_bdev_mgr.spinlock);
 	bdev = spdk_bdev_first();
 	while (bdev != NULL) {
-		rc = bdev_desc_alloc(bdev, _tmp_bdev_event_cb, NULL, &desc);
+		rc = bdev_desc_alloc(bdev, _tmp_bdev_event_cb, NULL, NULL, &desc);
 		if (rc != 0) {
 			break;
 		}
@@ -9132,7 +9213,7 @@ spdk_for_each_bdev_leaf(void *ctx, spdk_for_each_bdev_fn fn)
 	spdk_spin_lock(&g_bdev_mgr.spinlock);
 	bdev = spdk_bdev_first_leaf();
 	while (bdev != NULL) {
-		rc = bdev_desc_alloc(bdev, _tmp_bdev_event_cb, NULL, &desc);
+		rc = bdev_desc_alloc(bdev, _tmp_bdev_event_cb, NULL, NULL, &desc);
 		if (rc != 0) {
 			break;
 		}
