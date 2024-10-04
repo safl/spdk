@@ -74,6 +74,7 @@ static const char *g_bdevperf_conf_file = NULL;
 static double g_zipf_theta;
 static bool g_random_map = false;
 static bool g_unique_writes = false;
+static bool g_no_metadata = false;
 
 static struct spdk_cpuset g_all_cpuset;
 static struct spdk_poller *g_perf_timer = NULL;
@@ -1880,6 +1881,7 @@ bdevperf_construct_job(struct spdk_bdev *bdev, struct job_config *config,
 	}
 
 	opts.size = sizeof(opts);
+	opts.no_metadata = g_no_metadata;
 
 	rc = spdk_bdev_open_ext_v2(job->name, true, bdevperf_bdev_removed, job, &opts,
 				   &job->bdev_desc);
@@ -2793,6 +2795,8 @@ bdevperf_parse_arg(int ch, char *arg)
 		g_io_size = (int)size;
 	} else if (ch == 'U') {
 		g_unique_writes = true;
+	} else if (ch == 'N') {
+		g_no_metadata = true;
 	} else {
 		tmp = spdk_strtoll(arg, 10);
 		if (tmp < 0) {
@@ -2859,6 +2863,7 @@ bdevperf_usage(void)
 	printf(" -E                        share per lcore thread among jobs. Available only if -j is not used.\n");
 	printf(" -J                        File name to open with append mode and log JSON RPC calls.\n");
 	printf(" -U                        generate unique data for each write I/O, has no effect on non-write I/O\n");
+	printf(" -N                        Enable no_metadata option to each bdev\n");
 }
 
 static void
@@ -2982,7 +2987,7 @@ main(int argc, char **argv)
 	opts.rpc_addr = NULL;
 	opts.shutdown_cb = spdk_bdevperf_shutdown_cb;
 
-	if ((rc = spdk_app_parse_args(argc, argv, &opts, "Zzfq:o:t:w:k:CEF:J:M:P:S:T:Xlj:DU", NULL,
+	if ((rc = spdk_app_parse_args(argc, argv, &opts, "Zzfq:o:t:w:k:CEF:J:M:P:S:T:Xlj:DUN", NULL,
 				      bdevperf_parse_arg, bdevperf_usage)) !=
 	    SPDK_APP_PARSE_ARGS_SUCCESS) {
 		return rc;
