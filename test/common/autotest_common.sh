@@ -1662,6 +1662,18 @@ function get_zoned_devs() {
 	done
 }
 
+function get_jobs() {
+	local _jobs=() job
+	local -g jobs
+
+	_jobs=($(jobs -p))
+	((${#_jobs[@]} > 0)) || return 0
+
+	for job in "${!_jobs[@]}"; do
+		jobs[_jobs[job]]=$(jobs "%$((job + 1))")
+	done
+}
+
 # Define temp storage for all the tests. Look for 2GB at minimum
 set_test_storage "${TEST_MIN_STORAGE_SIZE:-$((1 << 31))}"
 
