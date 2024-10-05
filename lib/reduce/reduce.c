@@ -780,7 +780,11 @@ _load_read_super_and_path_cpl(void *cb_arg, int reduce_errno)
 	struct spdk_reduce_chunk_map *chunk;
 	size_t mapped_len;
 	uint32_t j;
-	int rc;
+	int rc = 0;
+
+	if (reduce_errno != 0) {
+		goto error;
+	}
 
 	rc = _alloc_zero_buff();
 	if (rc) {
