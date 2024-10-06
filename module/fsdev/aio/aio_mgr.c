@@ -242,10 +242,11 @@ spdk_aio_mgr_cancel(struct spdk_aio_mgr *mgr, struct spdk_aio_mgr_io *aio)
 	fsdev_aio_cancel(aio);
 }
 
-void
+uint32_t
 spdk_aio_mgr_poll(struct spdk_aio_mgr *mgr)
 {
 	struct spdk_aio_mgr_io *aio, *tmp_aio;
+	uint32_t num_completions = 0;
 	TAILQ_FOREACH_SAFE(aio, &mgr->in_flight, link, tmp_aio) {
 		struct spdk_aio_mgr_req *req, *tmp_req;
 		TAILQ_FOREACH_SAFE(req, &aio->reqs, link, tmp_req) {
@@ -280,9 +281,12 @@ spdk_aio_mgr_poll(struct spdk_aio_mgr *mgr)
 				aio->clb(aio->ctx, aio->data_size, aio->err); /* call the user's callback */
 				TAILQ_REMOVE(&mgr->in_flight, aio, link); /* remove the aio from the in_flight aios list */
 				TAILQ_INSERT_TAIL(&mgr->aios.pool, aio, link); /* return the aio to the pool */
+				num_completions++;
 			}
 		}
 	}
+
+	return num_completions;
 }
 
 void

@@ -2005,9 +2005,9 @@ aio_io_poll(void *arg)
 {
 	struct aio_fsdev_io *vfsdev_io, *tmp;
 	struct aio_io_channel *ch = arg;
-	uint32_t num_completions = 0;
+	uint32_t num_completions;
 
-	spdk_aio_mgr_poll(ch->mgr);
+	num_completions = spdk_aio_mgr_poll(ch->mgr);
 
 	TAILQ_FOREACH_SAFE(vfsdev_io, &ch->ios_to_complete, link, tmp) {
 		struct spdk_fsdev_io *fsdev_io = aio_to_fsdev_io(vfsdev_io);
