@@ -21,11 +21,6 @@ The tags can be matched with the level 4 headers below.
 
 ### nvme
 
-#### `spdk_nvme_accel_fn_table.submit_accel_crc32c`
-
-This callback is now deprecated and will be removed in the v25.01 release.  Please use the append
-API (`append_crc32c`, `finish_sequence`, `reverse_sequence`, `abort_sequence`) instead.
-
 #### `multipath_config` `failover_config`
 
 All controllers created with the same name shall be configured either for multipath or for failover.
