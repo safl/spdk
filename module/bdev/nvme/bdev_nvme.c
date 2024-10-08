@@ -5892,9 +5892,55 @@ bdev_nvme_hotplug(void *arg)
 }
 
 void
-bdev_nvme_get_opts(struct spdk_bdev_nvme_opts *opts)
+spdk_bdev_nvme_get_opts(struct spdk_bdev_nvme_opts *opts, size_t opts_size)
 {
-	*opts = g_opts;
+	if (!opts) {
+		SPDK_ERRLOG("opts should not be NULL\n");
+		return;
+	}
+
+	if (!opts_size) {
+		SPDK_ERRLOG("opts_size should not be zero value\n");
+		return;
+	}
+
+	opts->opts_size = opts_size;
+
+#define SET_FIELD(field) \
+	if (offsetof(struct spdk_bdev_nvme_opts, field) + sizeof(opts->field) <= opts_size) { \
+		opts->field = g_opts.field; \
+	} \
+
+	SET_FIELD(action_on_timeout);
+	SET_FIELD(timeout_us);
+	SET_FIELD(timeout_admin_us);
+	SET_FIELD(keep_alive_timeout_ms);
+	SET_FIELD(transport_retry_count);
+	SET_FIELD(arbitration_burst);
+	SET_FIELD(low_priority_weight);
+	SET_FIELD(medium_priority_weight);
+	SET_FIELD(high_priority_weight);
+	SET_FIELD(nvme_adminq_poll_period_us);
+	SET_FIELD(nvme_ioq_poll_period_us);
+	SET_FIELD(io_queue_requests);
+	SET_FIELD(delay_cmd_submit);
+	SET_FIELD(bdev_retry_count);
+	SET_FIELD(transport_ack_timeout);
+	SET_FIELD(ctrlr_loss_timeout_sec);
+	SET_FIELD(reconnect_delay_sec);
+	SET_FIELD(fast_io_fail_timeout_sec);
+	SET_FIELD(disable_auto_failback);
+	SET_FIELD(generate_uuids);
+	SET_FIELD(transport_tos);
+	SET_FIELD(nvme_error_stat);
+	SET_FIELD(rdma_srq_size);
+	SET_FIELD(io_path_stat);
+
+#undef SET_FIELD
+
+	/* Do not remove this statement, you should always update this statement when you adding a new field,
+	 * and do not forget to add the SET_FIELD statement for your added field. */
+	SPDK_STATIC_ASSERT(sizeof(struct spdk_bdev_nvme_opts) == 114, "Incorrect size");
 }
 
 static bool bdev_nvme_check_io_error_resiliency_params(int32_t ctrlr_loss_timeout_sec,
@@ -5925,8 +5971,18 @@ bdev_nvme_validate_opts(const struct spdk_bdev_nvme_opts *opts)
 }
 
 int
-bdev_nvme_set_opts(const struct spdk_bdev_nvme_opts *opts)
+spdk_bdev_nvme_set_opts(const struct spdk_bdev_nvme_opts *opts)
 {
+	if (!opts) {
+		SPDK_ERRLOG("opts cannot be NULL\n");
+		return -1;
+	}
+
+	if (!opts->opts_size) {
+		SPDK_ERRLOG("opts_size inside opts cannot be zero value\n");
+		return -1;
+	}
+
 	int ret;
 
 	ret = bdev_nvme_validate_opts(opts);
@@ -5964,7 +6020,39 @@ bdev_nvme_set_opts(const struct spdk_bdev_nvme_opts *opts)
 		}
 	}
 
-	g_opts = *opts;
+#define SET_FIELD(field) \
+	if (offsetof(struct spdk_bdev_nvme_opts, field) + sizeof(opts->field) <= opts->opts_size) { \
+		g_opts.field = opts->field; \
+	} \
+
+	SET_FIELD(action_on_timeout);
+	SET_FIELD(timeout_us);
+	SET_FIELD(timeout_admin_us);
+	SET_FIELD(keep_alive_timeout_ms);
+	SET_FIELD(transport_retry_count);
+	SET_FIELD(arbitration_burst);
+	SET_FIELD(low_priority_weight);
+	SET_FIELD(medium_priority_weight);
+	SET_FIELD(high_priority_weight);
+	SET_FIELD(nvme_adminq_poll_period_us);
+	SET_FIELD(nvme_ioq_poll_period_us);
+	SET_FIELD(io_queue_requests);
+	SET_FIELD(delay_cmd_submit);
+	SET_FIELD(bdev_retry_count);
+	SET_FIELD(transport_ack_timeout);
+	SET_FIELD(ctrlr_loss_timeout_sec);
+	SET_FIELD(reconnect_delay_sec);
+	SET_FIELD(fast_io_fail_timeout_sec);
+	SET_FIELD(disable_auto_failback);
+	SET_FIELD(generate_uuids);
+	SET_FIELD(transport_tos);
+	SET_FIELD(nvme_error_stat);
+	SET_FIELD(rdma_srq_size);
+	SET_FIELD(io_path_stat);
+
+	g_opts.opts_size = opts->opts_size;
+
+#undef SET_FIELD
 
 	return 0;
 }
