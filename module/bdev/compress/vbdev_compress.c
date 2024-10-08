@@ -511,12 +511,16 @@ _vbdev_reduce_init_cb(void *ctx)
 {
 	struct vbdev_init_reduce_ctx *init_ctx = ctx;
 	struct vbdev_compress *comp_bdev = init_ctx->comp_bdev;
-	int rc;
+	int rc = init_ctx->status;
 
 	assert(comp_bdev->base_desc != NULL);
 
 	/* We're done with metadata operations */
 	spdk_put_io_channel(comp_bdev->base_ch);
+
+	if (rc != 0) {
+		goto err;
+	}
 
 	if (comp_bdev->vol) {
 		rc = vbdev_compress_claim(comp_bdev);
@@ -527,9 +531,9 @@ _vbdev_reduce_init_cb(void *ctx)
 		} else {
 			spdk_reduce_vol_unload(comp_bdev->vol, _vbdev_reduce_init_unload_cb, NULL);
 		}
-		init_ctx->cb_fn(init_ctx->cb_ctx, rc);
 	}
-
+err:
+	init_ctx->cb_fn(init_ctx->cb_ctx, rc);
 	/* Close the underlying bdev on its same opened thread. */
 	spdk_bdev_close(comp_bdev->base_desc);
 	free(comp_bdev);
@@ -551,7 +555,6 @@ vbdev_reduce_init_cb(void *cb_arg, struct spdk_reduce_vol *vol, int reduce_errno
 	} else {
 		SPDK_ERRLOG("for vol %s, error %s\n",
 			    spdk_bdev_get_name(comp_bdev->base_bdev), spdk_strerror(-reduce_errno));
-		init_ctx->cb_fn(init_ctx->cb_ctx, reduce_errno);
 	}
 
 	init_ctx->status = reduce_errno;
