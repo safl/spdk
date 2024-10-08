@@ -8,6 +8,7 @@
 #include "spdk/env.h"
 #include "spdk/log.h"
 #include "spdk/queue.h"
+#include "spdk/util.h"
 
 #include "spdk/fd_group.h"
 
@@ -42,6 +43,7 @@ struct event_handler {
 	/* file descriptor of the interrupt event */
 	int				fd;
 	uint32_t			events;
+	uint32_t			fd_type;
 	char				name[SPDK_MAX_EVENT_NAME_LEN + 1];
 };
 
@@ -235,13 +237,26 @@ int
 spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t events,
 			     spdk_fd_fn fn, void *arg, const char *name)
 {
+	struct spdk_event_handler_opts opts;
+
+	opts.size = SPDK_SIZEOF(&opts, fd_type);
+	opts.events = events;
+	opts.fd_type = SPDK_FD_TYPE_DEFAULT;
+
+	return spdk_fd_group_add_ext(fgrp, efd, fn, arg, name, &opts);
+}
+
+int
+spdk_fd_group_add_ext(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *arg,
+		      const char *name, struct spdk_event_handler_opts *opts)
+{
 	struct event_handler *ehdlr = NULL;
 	struct epoll_event epevent = {0};
 	int rc;
 	int epfd;
 
 	/* parameter checking */
-	if (fgrp == NULL || efd < 0 || fn == NULL) {
+	if (fgrp == NULL || efd < 0 || fn == NULL || opts == NULL) {
 		return -EINVAL;
 	}
 
@@ -262,7 +277,8 @@ spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t event
 	ehdlr->fn = fn;
 	ehdlr->fn_arg = arg;
 	ehdlr->state = EVENT_HANDLER_STATE_WAITING;
-	ehdlr->events = events;
+	ehdlr->events = opts->events;
+	ehdlr->fd_type = opts->fd_type;
 	snprintf(ehdlr->name, sizeof(ehdlr->name), "%s", name);
 
 	if (fgrp->parent) {
@@ -516,6 +532,13 @@ spdk_fd_group_add(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn,
 int
 spdk_fd_group_add_for_events(struct spdk_fd_group *fgrp, int efd, uint32_t events, spdk_fd_fn fn,
 			     void *arg, const char *name)
+{
+	return -ENOTSUP;
+}
+
+int
+spdk_fd_group_add_ext(struct spdk_fd_group *fgrp, int efd, spdk_fd_fn fn, void *arg,
+		      const char *name, struct spdk_event_handler_opts *opts)
 {
 	return -ENOTSUP;
 }
