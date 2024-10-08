@@ -25,6 +25,7 @@ extern "C" {
  */
 enum spdk_fd_type {
 	SPDK_FD_TYPE_DEFAULT		= 0x0,
+	SPDK_FD_TYPE_VFIO		= 0x1,
 };
 
 struct spdk_event_handler_opts {
