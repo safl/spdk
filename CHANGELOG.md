@@ -31,6 +31,11 @@ Added APIs `spdk_nvme_ctrlr_qpair_get_fd()` and `spdk_nvme_ctrlr_get_admin_qp_fd
 fd for an I/O and admin qpair respectively for a given NVMe controller. This is applicable only
 for the PCIe transport.
 
+### util
+
+Added `spdk_fd_group_add_ext()` API which can receive `spdk_event_handler_opts` structure. This is
+to prevent any further expansion of`spdk_fd_group_add()` API.
+
 ## v24.09
 
 ### accel
