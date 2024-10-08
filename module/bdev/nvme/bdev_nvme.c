@@ -5892,7 +5892,7 @@ bdev_nvme_hotplug(void *arg)
 }
 
 void
-bdev_nvme_get_opts(struct spdk_bdev_nvme_opts *opts)
+spdk_bdev_nvme_get_opts(struct spdk_bdev_nvme_opts *opts)
 {
 	*opts = g_opts;
 }
@@ -5925,7 +5925,7 @@ bdev_nvme_validate_opts(const struct spdk_bdev_nvme_opts *opts)
 }
 
 int
-bdev_nvme_set_opts(const struct spdk_bdev_nvme_opts *opts)
+spdk_bdev_nvme_set_opts(const struct spdk_bdev_nvme_opts *opts)
 {
 	int ret;
 
