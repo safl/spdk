@@ -436,7 +436,7 @@ map_supported_devices() {
 	local ids dev_types dev_type dev_id bdf bdfs vmd _vmd
 
 	local -gA nvme_d
-	local -gA ioat_d dsa_d iaa_d
+	local -gA ioat_d dsa_d iaa_d ae4dma_d
 	local -gA virtio_d
 	local -gA vmd_d nvme_vmd_d vmd_nvme_d vmd_nvme_count
 	local -gA all_devices_d types_d all_devices_type_d
@@ -445,6 +445,8 @@ map_supported_devices() {
 	ids+="|PCI_DEVICE_ID_INTEL_DSA" dev_types+="|DSA"
 	ids+="|PCI_DEVICE_ID_INTEL_IAA" dev_types+="|IAA"
 	ids+="|PCI_DEVICE_ID_VIRTIO" dev_types+="|VIRTIO"
+	ids+="|PCIE_DEVICE_ID_AMD_AE4DMA_EPYC9XX4" dev_types+="|AE4DMA"
+	ids+="|PCIE_DEVICE_ID_AMD_AE4DMA_EPYC8XX4" dev_types+="|AE4DMA"
 	ids+="|PCI_DEVICE_ID_INTEL_VMD" dev_types+="|VMD"
 	ids+="|SPDK_PCI_CLASS_NVME" dev_types+="|NVME"
 
@@ -455,6 +457,7 @@ map_supported_devices() {
 	while read -r _ dev_type dev_id; do
 		[[ $dev_type == *$type* ]] || continue
 		bdfs=(${pci_bus_cache["0x8086:$dev_id"]})
+		bdfs=(${pci_bus_cache["0x1022:$dev_id"]})
 		[[ $dev_type == *NVME* ]] && bdfs=(${pci_bus_cache["$dev_id"]})
 		[[ $dev_type == *VIRT* ]] && bdfs=(${pci_bus_cache["0x1af4:$dev_id"]})
 		[[ $dev_type =~ ($dev_types) ]] && dev_type=${BASH_REMATCH[1],,}

@@ -2,6 +2,15 @@
 
 ## v25.01: (Upcoming Release)
 
+## v1.0.0: AE4DMA user-space driver
+
+This release adds a user-space driver with support for the AMD EPYC 4th Generation
+DMA (AE4DMA) offload engine.
+
+- AE4DMA
+  - New user-space driver supporting DMA memory copy offload on AMD EYPC systems.
+  - Example program `ae4dma/perf`
+
 ## v24.09
 
 ### accel
