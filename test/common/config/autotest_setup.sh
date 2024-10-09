@@ -140,10 +140,17 @@ if $UPGRADE; then
 	upgrade
 fi
 
+echo *** 143 ***
 if $INSTALL; then
+	echo *** 145 ***
 	sudo "$rootdir/scripts/pkgdep.sh" --all
+	echo *** 147 ***
 	pre_install
+	echo *** 149 ***
 	install "${packages[@]}"
+	echo *** 151 ***
 fi
 
+echo *** 154 ***
 install_sources
+echo *** 156 ***
