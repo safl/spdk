@@ -253,6 +253,10 @@ if [ $SPDK_RUN_FUNCTIONAL_TEST -eq 1 ]; then
 		run_test "ioat" $rootdir/test/ioat/ioat.sh
 	fi
 
+	if [ $SPDK_TEST_AE4DMA -eq 1 ]; then
+		run_test "ae4dma" $rootdir/test/ae4dma/ae4dma.sh
+	fi
+
 	timing_exit lib
 
 	if [ $SPDK_TEST_ISCSI -eq 1 ]; then
