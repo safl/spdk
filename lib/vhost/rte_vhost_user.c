@@ -736,13 +736,12 @@ vhost_session_mem_register(struct rte_vhost_memory *mem)
 	uint32_t i;
 	uint64_t previous_start = UINT64_MAX;
 
-
 	for (i = 0; i < mem->nregions; i++) {
 		vhost_session_mem_region_calc(&previous_start, &start, &end, &len, &mem->regions[i]);
 		SPDK_INFOLOG(vhost, "Registering VM memory for vtophys translation - 0x%jx len:0x%jx\n",
 			     start, len);
 
-		if (spdk_mem_register_ext((void *)start, len, SPDK_MEM_F_ALL) != 0) {
+		if (spdk_mem_register_ext((void *)start, len, SPDK_MEM_F_VTOPHYS) != 0) {
 			SPDK_WARNLOG("Failed to register memory region %"PRIu32". Future vtophys translation might fail.\n",
 				     i);
 			continue;
@@ -763,7 +762,7 @@ vhost_session_mem_unregister(struct rte_vhost_memory *mem)
 			continue; /* region has not been registered */
 		}
 
-		if (spdk_mem_unregister_ext((void *)start, len, SPDK_MEM_F_ALL) != 0) {
+		if (spdk_mem_unregister_ext((void *)start, len, SPDK_MEM_F_VTOPHYS) != 0) {
 			assert(false);
 		}
 	}
