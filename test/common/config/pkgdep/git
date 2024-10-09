@@ -529,11 +529,13 @@ function install_sources() {
 		install_git
 	fi
 
+	echo sources 1
 	IFS="," read -ra conf_env <<< "$CONF"
 	for conf in "${conf_env[@]}"; do
 		export "INSTALL_${conf^^}=true"
 	done
 
+	echo sources 2
 	if [[ $OSID == freebsd ]]; then
 		jobs=$(($(sysctl -n hw.ncpu) * 2))
 	else
@@ -557,12 +559,15 @@ function install_sources() {
 	sources+=(install_flamegraph)
 	sources+=(install_vagrant)
 	sources+=(install_ittapi)
+	echo sources 3
 
 	sudo mkdir -p /usr/{,local}/src
 	sudo mkdir -p "$GIT_REPOS"
 
+	echo sources 4
 	for source in "${sources[@]}"; do
 		source_conf=${source^^}
+		echo sources $source_conf = ${!source_conf}
 		if [[ ${!source_conf} == true ]]; then
 			"$source"
 		fi

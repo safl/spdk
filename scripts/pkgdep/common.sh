@@ -7,17 +7,23 @@ install_liburing() {
 	local GIT_REPO_LIBURING=https://github.com/axboe/liburing.git
 	local liburing_dir=/usr/local/src/liburing
 
+	echo liburing 1
 	if [[ -d $liburing_dir ]]; then
 		echo "liburing source already present, not cloning"
 	else
 		mkdir -p $liburing_dir
 		git clone "${GIT_REPO_LIBURING}" "$liburing_dir"
 	fi
+	echo liburing 2
 	# Use commit we know we can compile against. See #1673 as a reference.
 	git -C "$liburing_dir" checkout liburing-2.2
+	echo liburing 3
 	(cd "$liburing_dir" && ./configure --libdir=/usr/lib64 --libdevdir=/usr/lib64 && make install)
+	echo liburing 4
 	echo /usr/lib64 > /etc/ld.so.conf.d/spdk-liburing.conf
+	echo liburing 5
 	ldconfig -X
+	echo liburing 6
 }
 
 install_uadk() {
@@ -135,12 +141,16 @@ install_markdownlint() {
 	local mdl_version="v0.11.0"
 	local srcdir=/usr/src/markdownlint
 
+	echo markdownlint 1
 	rm -rf "$srcdir"
+	echo markdownlint 2
 	git clone --branch "$mdl_version" "$git_repo_mdl" "$srcdir"
+	echo markdownlint 3
 	(
 		cd "$srcdir"
 		rake install
 	)
+	echo markdownlint 4
 }
 
 install_protoc() {
@@ -272,16 +282,21 @@ if [[ $INSTALL_DEV_TOOLS == true ]]; then
 	fi
 fi
 
+echo main 1
 if [[ $INSTALL_LIBURING == true ]]; then
 	install_liburing
 fi
 
+echo main 2
 if [[ $INSTALL_UADK == true ]]; then
 	install_uadk
 fi
 
+echo main 3
 if [[ $INSTALL_GOLANG == true ]]; then
 	install_golang
 	[[ $(uname -s) == Linux ]] && install_protoc
 	install_golangci_lint
 fi
+
+echo main 4
