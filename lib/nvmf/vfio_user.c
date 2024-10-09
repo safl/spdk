@@ -4293,8 +4293,6 @@ vfio_user_register_accept_poller(struct nvmf_vfio_user_endpoint *endpoint)
 				nvmf_vfio_user_accept, endpoint);
 
 	assert(endpoint->accept_intr != NULL);
-
-	spdk_poller_register_interrupt(endpoint->accept_poller, NULL, NULL);
 	return 0;
 }
 

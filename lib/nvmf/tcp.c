@@ -851,8 +851,6 @@ nvmf_tcp_create(struct spdk_nvmf_transport_opts *opts)
 		return NULL;
 	}
 
-	spdk_poller_register_interrupt(ttransport->accept_poller, NULL, NULL);
-
 	ttransport->listen_sock_group = spdk_sock_group_create(NULL);
 	if (ttransport->listen_sock_group == NULL) {
 		SPDK_ERRLOG("Failed to create socket group for listen sockets\n");

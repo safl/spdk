@@ -868,7 +868,6 @@ bdev_aio_group_create_cb(void *io_device, void *ctx_buf)
 	}
 
 	ch->poller = SPDK_POLLER_REGISTER(bdev_aio_group_poll, ch, 0);
-	spdk_poller_register_interrupt(ch->poller, NULL, NULL);
 
 	return 0;
 }
