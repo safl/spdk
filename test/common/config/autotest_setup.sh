@@ -140,10 +140,17 @@ if $UPGRADE; then
 	upgrade
 fi
 
+echo setup 1
 if $INSTALL; then
+	echo setup 2
 	sudo "$rootdir/scripts/pkgdep.sh" --all
+	echo setup 3
 	pre_install
+	echo setup 4
 	install "${packages[@]}"
+	echo setup 5
 fi
 
+echo setup 6
 install_sources
+echo setup 7
