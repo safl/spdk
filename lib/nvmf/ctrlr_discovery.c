@@ -21,7 +21,7 @@
 #include "spdk/log.h"
 
 void
-nvmf_update_discovery_log(struct spdk_nvmf_tgt *tgt, const char *hostnqn)
+spdk_nvmf_update_discovery_log(struct spdk_nvmf_tgt *tgt, const char *hostnqn)
 {
 	struct spdk_nvmf_subsystem *discovery_subsystem;
 	struct spdk_nvmf_ctrlr *ctrlr;
