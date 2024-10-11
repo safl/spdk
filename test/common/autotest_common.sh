@@ -734,7 +734,9 @@ function timing_exit() {
 
 function timing_finish() {
 	flamegraph='/usr/local/FlameGraph/flamegraph.pl'
-	[[ -x "$flamegraph" ]] || return 1
+	ls /usr/local
+	ls /usr/local/FlameGraph
+	[[ -x "$flamegraph" ]] || return 0
 
 	"$flamegraph" \
 		--title 'Build Timing' \
