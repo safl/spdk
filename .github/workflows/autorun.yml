@@ -1,0 +1,180 @@
+---
+name: autorun
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'The branch with changes e.g. "changes/xx/yyyyyy/zz"'
+        required: true
+        default: 'master'
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+    branches: [master]
+
+jobs:
+
+  source-archive:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/spdk-community-ci:poc
+
+    steps:
+    - name: Checkout CI repository
+      uses: actions/checkout@v4.1.7
+      with:
+        submodules: 'recursive'
+        fetch-depth: 0
+
+    - name: Create a tarball, of the repository, to preserve file permissions
+      run: |
+        tar -czf /tmp/repository.tar.gz .
+
+    - name: Upload the repository as an artifact
+      uses: actions/upload-artifact@v4.4.0
+      with:
+        name: repository
+        path: /tmp/repository.tar.gz
+
+  autorun_unittest:
+    runs-on: ubuntu-latest
+    needs: source-archive
+    timeout-minutes: 35
+    env:
+      REPOSITORY_TARBALL_PATH: ${{ github.workspace }}/repository.tar.gz
+
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/spdk-community-ci:poc
+      options: --privileged
+
+    steps:
+    - name: Setup CIJOE and pipx
+      run: |
+        pipx install cijoe==0.9.45 -f
+        pipx ensurepath
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Download the SPDK repository
+      uses: actions/download-artifact@v4.1.8
+      with:
+        name: repository
+
+    - name: Extract the SPDK repository
+      run: |
+        tar xzf repository.tar.gz --strip 1
+
+    - name: qemu-guest, provision
+      run: |
+        cd scripts/cijoe
+        cijoe guest_kill guest_bootimg guest_start guest_misc tgz_transfer tgz_unpack \
+        --monitor \
+        --config configs/qemuhost-with-guest-fedora-40.toml \
+        --workflow workflows/autorun_in_qemu.yaml \
+        --output report_autorun_unittest_prep_guest
+
+    - name: qemu-guest, autorun_unittest
+      run: |
+        cd scripts/cijoe
+        cijoe autorun_unittest \
+        --monitor \
+        --config configs/qemuhost-with-guest-fedora-40.toml \
+        --workflow workflows/autorun_in_qemu.yaml \
+        --output report_autorun_unittest
+
+    - name: qemu-guest, cleanup
+      if: always()
+      run: |
+        cd scripts/cijoe
+        cijoe output_listing retrieve_autorun_output guest_shutdown \
+        --monitor \
+        --config configs/qemuhost-with-guest-fedora-40.toml \
+        --workflow workflows/autorun_in_qemu.yaml \
+        --output report_autorun_unittest_cleanup
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4.4.0
+      if: always()
+      with:
+        path: /tmp/autorun_output
+        name: autorun_unittest_artifacts
+
+    - name: Upload Report
+      uses: actions/upload-artifact@v4.4.0
+      if: always()
+      with:
+        path: |
+          scripts/cijoe/report_autorun_unittest
+          scripts/cijoe/report_autorun_unittest_cleanup
+          scripts/cijoe/report_autorun_unittest_prep_guest
+        name: report-autorun-unittest-in-qemu
+
+  autorun_nvme:
+    runs-on: ubuntu-latest
+    needs: source-archive
+    timeout-minutes: 35
+    env:
+      REPOSITORY_TARBALL_PATH: ${{ github.workspace }}/repository.tar.gz
+
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/spdk-community-ci:poc
+      options: --privileged
+
+    steps:
+    - name: Setup CIJOE and pipx
+      run: |
+        pipx install cijoe==0.9.45 -f
+        pipx ensurepath
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Download the SPDK repository
+      uses: actions/download-artifact@v4.1.8
+      with:
+        name: repository
+
+    - name: Extract the SPDK repository
+      run: |
+        tar xzf repository.tar.gz --strip 1
+
+    - name: qemu-guest, provision
+      run: |
+        cd scripts/cijoe
+        cijoe guest_kill guest_bootimg guest_start guest_misc tgz_transfer tgz_unpack \
+        --monitor \
+        --config configs/qemuhost-with-guest-fedora-40.toml \
+        --workflow workflows/autorun_in_qemu.yaml \
+        --output report_autorun_nvme_prep_guest
+
+    - name: qemu-guest, autorun_nvme
+      run: |
+        cd scripts/cijoe
+        cijoe autorun_nvme \
+        --monitor \
+        --config configs/qemuhost-with-guest-fedora-40.toml \
+        --workflow workflows/autorun_in_qemu.yaml \
+        --output report_autorun_nvme
+
+    - name: qemu-guest, cleanup
+      if: always()
+      run: |
+        cd scripts/cijoe
+        cijoe output_listing retrieve_autorun_output guest_shutdown \
+        --monitor \
+        --config configs/qemuhost-with-guest-fedora-40.toml \
+        --workflow workflows/autorun_in_qemu.yaml \
+        --output report_autorun_nvme_cleanup
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4.4.0
+      if: always()
+      with:
+        path: /tmp/autorun_output
+        name: autorun_nvme_artifacts
+
+    - name: Upload Report
+      uses: actions/upload-artifact@v4.4.0
+      if: always()
+      with:
+        path: |
+          scripts/cijoe/report_autorun_nvme
+          scripts/cijoe/report_autorun_nvme_cleanup
+          scripts/cijoe/report_autorun_nvme_prep_guest
+        name: report-autorun-nvme-in-qemu
